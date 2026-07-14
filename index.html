@@ -9,22 +9,15 @@
   <body>
     <main class="app" id="app">
       <aside class="rail" aria-label="Primary navigation">
-        <div class="brand-mark">C</div>
+        <div class="rail-spacer"></div>
+        <details class="auth-panel" id="auth-panel" hidden>
+          <summary class="profile-button" aria-label="Account">
+            <span id="user-email"></span>
+          </summary>
+          <button class="secondary-action" id="logout-button" type="button">Log out</button>
+        </details>
       </aside>
       <section class="shell">
-        <nav class="sidebar">
-          <h1>CRM Manager</h1>
-          <div class="auth-panel" id="auth-panel" hidden>
-            <span id="user-email"></span>
-            <button class="secondary-action" id="logout-button" type="button">Log out</button>
-          </div>
-          <div class="customizer">
-            <p>CUSTOMIZE</p>
-            <label>Accent color<input id="accent" type="color" value="#0b55ff" /></label>
-            <label>Card radius<input id="radius" type="range" min="4" max="28" value="14" /></label>
-            <label class="toggle"><input id="compact" type="checkbox" /> Compact boards</label>
-          </div>
-        </nav>
         <section class="workspace" id="workspace">
           <header class="topbar">
             <div><p class="breadcrumb" id="breadcrumb">Pipelines</p><h2 id="page-title">Pipelines</h2></div>

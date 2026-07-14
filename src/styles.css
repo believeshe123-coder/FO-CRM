@@ -18,25 +18,16 @@ button, input, select { font: inherit; }
 button { cursor: pointer; }
 
 .app { min-height: 100vh; background: radial-gradient(circle at top left, #1b2b5c 0, #0b1020 32%, #070a14 100%); display: flex; padding: 18px; }
-.rail { width: 68px; color: #f4f6ff; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 12px 0; }
-.brand-mark { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), #7c3aed); box-shadow: 0 16px 30px rgba(11, 85, 255, .35); font-size: 30px; font-weight: 800; }
+.rail { width: 68px; color: #f4f6ff; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 12px 0; position: relative; }
+.rail-spacer { flex: 1; }
 .rail-icon { width: 40px; height: 40px; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; display: grid; place-items: center; color: #b9c3dc; background: rgba(255,255,255,.04); }
 .rail-icon.active { background: rgba(255,255,255,.16); color: #fff; box-shadow: inset 3px 0 0 var(--accent); }
 
-.shell { flex: 1; min-height: calc(100vh - 36px); display: grid; grid-template-columns: 244px minmax(0, 1fr); background: var(--surface); border: 1px solid rgba(255,255,255,.14); border-radius: 26px; overflow: hidden; box-shadow: 0 30px 90px rgba(0, 0, 0, .35); }
-.sidebar { background: #f4f7fb; border-right: 1px solid var(--line); padding: 24px 16px; }
-.sidebar h1 { margin: 0 8px 24px; font-size: 22px; letter-spacing: -.03em; }
+.shell { flex: 1; min-height: calc(100vh - 36px); display: grid; grid-template-columns: minmax(0, 1fr); background: var(--surface); border: 1px solid rgba(255,255,255,.14); border-radius: 26px; overflow: hidden; box-shadow: 0 30px 90px rgba(0, 0, 0, .35); }
 .nav-pill { display: flex; align-items: center; gap: 10px; border: 0; background: transparent; width: 100%; text-align: left; padding: 11px 12px; border-radius: 14px; color: #273149; margin-bottom: 6px; font-weight: 700; }
 .nav-pill::before { content: ''; width: 9px; height: 9px; border-radius: 999px; background: #b7c1d6; }
 .nav-pill.active { background: #e7eefb; color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
 .nav-pill.active::before { background: var(--accent); }
-.customizer { margin: 28px 8px 0; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: #fff; display: grid; gap: 14px; box-shadow: 0 12px 35px rgba(26, 39, 77, .08); }
-.customizer p { margin: 0; font-weight: 900; font-size: 11px; color: var(--muted); letter-spacing: .12em; }
-.customizer label { display: grid; gap: 7px; font-size: 12px; color: #47516a; font-weight: 700; }
-.customizer input[type='color'] { width: 100%; height: 36px; border: 1px solid #cbd4e5; border-radius: 10px; padding: 3px; }
-.customizer input[type='range'] { width: 100%; accent-color: var(--accent); }
-.toggle { display: flex !important; align-items: center; gap: 8px; }
-.toggle input { accent-color: var(--accent); }
 
 .workspace { background: #fbfcff; min-width: 0; }
 .topbar { min-height: 84px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 34px; background: rgba(255,255,255,.86); backdrop-filter: blur(10px); }
@@ -82,9 +73,6 @@ button { cursor: pointer; }
 .deal-card b { justify-self: end; font-size: 16px; }
 .deal-card small { color: var(--muted); }
 .avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--accent); font-size: 12px; font-weight: 900; }
-.compact .board { grid-template-columns: repeat(5, minmax(170px, 1fr)); gap: 10px; }
-.compact .stage { min-height: 230px; }
-.compact .metrics, .compact .prompt-row { display: none; }
 
 .task-panel { padding: 34px; display: grid; grid-template-columns: 360px 1fr; gap: 24px; }
 .create-card { border: 1px solid var(--line); border-radius: var(--card-radius); padding: 20px; display: grid; gap: 12px; align-self: start; background: #fff; box-shadow: 0 16px 35px rgba(30, 43, 78, .07); }
@@ -95,28 +83,38 @@ button { cursor: pointer; }
 .task em { color: var(--accent); font-style: normal; font-weight: 900; grid-row: span 2; align-self: center; }
 
 
-.modal { border: 0; border-radius: 24px; padding: 0; width: min(520px, calc(100vw - 40px)); box-shadow: 0 30px 90px rgba(0, 0, 0, .35); }
+.modal { border: 0; border-radius: 24px; padding: 0; width: min(520px, calc(100dvw - 32px)); max-height: calc(100dvh - 32px); margin: auto; overflow: auto; box-shadow: 0 30px 90px rgba(0, 0, 0, .35); }
 .modal::backdrop { background: rgba(7, 10, 20, .58); backdrop-filter: blur(3px); }
-.modal-card { display: grid; gap: 12px; padding: 22px; background: #fff; }
+.modal-card { display: grid; gap: 12px; width: 100%; padding: 22px; background: #fff; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .modal-head h3 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
-.modal-head button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--muted); font-size: 20px; }
+.modal-head button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--muted); font-size: 20px; flex: 0 0 auto; }
 .modal-card input, .modal-card select { border: 1px solid #cbd4e5; border-radius: 12px; padding: 11px 12px; background: #fff; color: var(--ink); }
 .helper { margin: 0; color: var(--muted); font-size: 13px; font-weight: 700; }
 #step-builder { display: grid; gap: 10px; }
 .step-row { display: grid; grid-template-columns: 1fr 1fr 54px; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: #f7f9fc; }
 .step-row input[type='color'] { height: 42px; padding: 3px; }
-.compact .pipeline-toolbar { margin-top: 18px; }
-.compact .board { grid-template-columns: repeat(var(--stage-count, 3), minmax(190px, 1fr)); gap: 10px; }
 
 .empty-pipelines { margin: 34px; min-height: 260px; display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--card-radius); background: #fff; color: var(--muted); font-weight: 800; text-align: center; }
 .empty-pipelines p { margin: 0; }
 .empty-pipelines--board { grid-column: 1 / -1; margin: 0; }
 
-.auth-panel { margin: 0 8px 18px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fff; display: grid; gap: 10px; box-shadow: 0 12px 35px rgba(26, 39, 77, .08); }
+@media (max-width: 560px) {
+  .modal { width: calc(100dvw - 24px); max-height: calc(100dvh - 24px); }
+  .modal-card { padding: 18px 14px; }
+  .step-row { grid-template-columns: minmax(0, 1fr) 48px; }
+  .step-row .step-subtitle { grid-column: 1 / -1; grid-row: 2; }
+}
+
+.auth-panel { position: relative; width: 44px; margin: auto 0 8px; padding: 0; }
 .auth-panel[hidden] { display: none; }
-.auth-panel span { color: var(--muted); font-size: 12px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.auth-panel button { width: 100%; }
+.profile-button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.14); border-radius: 16px; background: rgba(255,255,255,.08); box-shadow: 0 14px 28px rgba(0, 0, 0, .22); cursor: pointer; list-style: none; }
+.profile-button::-webkit-details-marker { display: none; }
+.profile-button::before { content: '👤'; font-size: 18px; line-height: 1; }
+.profile-button span { display: none; }
+.auth-panel[open] .profile-button span { position: absolute; left: 56px; bottom: 58px; z-index: 5; display: block; width: 190px; padding: 14px; border: 1px solid var(--line); border-radius: 16px 16px 6px 16px; background: #fff; color: #24304a; box-shadow: 0 16px 38px rgba(0, 0, 0, .24); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 900; }
+.auth-panel button { position: absolute; left: 56px; bottom: 8px; z-index: 5; display: none; width: 190px; }
+.auth-panel[open] button { display: inline-flex; }
 .auth-view { min-height: calc(100vh - 122px); display: grid; place-items: center; padding: 34px; }
 .auth-card, .group-card { width: min(440px, 100%); border: 1px solid var(--line); border-radius: 24px; padding: 28px; background: #fff; display: grid; gap: 14px; box-shadow: 0 22px 55px rgba(30, 43, 78, .12); }
 .auth-card h3, .group-card h3 { margin: 0; font-size: 28px; letter-spacing: -.04em; }

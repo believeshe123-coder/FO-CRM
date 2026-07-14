@@ -246,7 +246,7 @@ function renderPipelineView() {
 
   const pipeline = activePipeline();
   pageTitle.textContent = 'Pipelines';
-  breadcrumb.innerHTML = pipeline ? `Groups / <span>${escapeHtml(currentGroup?.name || 'Group')}</span> / ${escapeHtml(pipeline.name)}⌄` : `Groups / <span>${escapeHtml(currentGroup?.name || 'Group')}</span>`;
+  breadcrumb.innerHTML = pipeline ? `<span>${escapeHtml(currentGroup?.name || 'Group')}</span> / ${escapeHtml(pipeline.name)}` : `<span>${escapeHtml(currentGroup?.name || 'Group')}</span>`;
 
   if (!pipeline) {
     content.innerHTML = `
@@ -299,17 +299,18 @@ function renderCard(item) {
 }
 
 function renderItemModal(pipeline) {
-  return `<dialog class="modal" id="item-modal"><form method="dialog" class="modal-card" id="item-form"><div class="modal-head"><h3>Add item</h3><button value="cancel" aria-label="Close">×</button></div><input id="item-title" placeholder="Item title" required /><input id="item-value" placeholder="Value (optional)" type="number" min="0" /><input id="item-note" placeholder="Short note" /><select id="item-step">${pipeline.steps.map((step) => `<option value="${step.id}">${escapeHtml(step.title)}</option>`).join('')}</select><p class="status-message"></p><button class="primary-action" value="default" type="submit">＋ Add item</button></form></dialog>`;
+  return `<dialog class="modal" id="item-modal"><form method="dialog" class="modal-card" id="item-form"><div class="modal-head"><h3>Add item</h3><button type="button" class="modal-close" aria-label="Close">×</button></div><input id="item-title" placeholder="Item title" required /><input id="item-value" placeholder="Value (optional)" type="number" min="0" /><input id="item-note" placeholder="Short note" /><select id="item-step">${pipeline.steps.map((step) => `<option value="${step.id}">${escapeHtml(step.title)}</option>`).join('')}</select><p class="status-message"></p><button class="primary-action" value="default" type="submit">＋ Add item</button></form></dialog>`;
 }
 
 function renderPipelineModal() {
-  return `<dialog class="modal" id="pipeline-modal"><form method="dialog" class="modal-card" id="pipeline-form"><div class="modal-head"><h3>Create pipeline</h3><button value="cancel" aria-label="Close">×</button></div><input id="pipeline-name" placeholder="Pipeline name" required /><p class="helper">Add the steps you want to use for this pipeline.</p><div id="step-builder"></div><button class="secondary-action" id="add-step" type="button">＋ Add step</button><p class="status-message"></p><button class="primary-action" value="default" type="submit">Create pipeline</button></form></dialog>`;
+  return `<dialog class="modal" id="pipeline-modal"><form method="dialog" class="modal-card" id="pipeline-form"><div class="modal-head"><h3>Create pipeline</h3><button type="button" class="modal-close" aria-label="Close">×</button></div><input id="pipeline-name" placeholder="Pipeline name" required /><p class="helper">Add the steps you want to use for this pipeline.</p><div id="step-builder"></div><button class="secondary-action" id="add-step" type="button">＋ Add step</button><p class="status-message"></p><button class="primary-action" value="default" type="submit">Create pipeline</button></form></dialog>`;
 }
 
 function bindEmptyPipelineEvents() {
   document.querySelector('#open-pipeline-modal').addEventListener('click', openPipelineModal);
   document.querySelector('#pipeline-form').addEventListener('submit', addPipeline);
   document.querySelector('#add-step').addEventListener('click', () => addStepRow());
+  bindModalCloseButtons();
 }
 
 function bindPipelineEvents() {
@@ -319,11 +320,18 @@ function bindPipelineEvents() {
   document.querySelector('#item-form').addEventListener('submit', addItem);
   document.querySelector('#pipeline-form').addEventListener('submit', addPipeline);
   document.querySelector('#add-step').addEventListener('click', () => addStepRow());
+  bindModalCloseButtons();
   document.querySelectorAll('.deal-card').forEach((card) => card.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', card.dataset.itemId)));
   document.querySelectorAll('.drop-zone').forEach((zone) => {
     zone.addEventListener('dragover', (event) => { event.preventDefault(); zone.classList.add('drag-over'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
     zone.addEventListener('drop', moveItem);
+  });
+}
+
+function bindModalCloseButtons() {
+  document.querySelectorAll('.modal-close').forEach((button) => {
+    button.addEventListener('click', () => button.closest('dialog')?.close());
   });
 }
 
@@ -494,9 +502,6 @@ async function initializeApp() {
   }
 }
 
-document.querySelector('#accent').addEventListener('input', (event) => document.documentElement.style.setProperty('--accent', event.target.value));
-document.querySelector('#radius').addEventListener('input', (event) => document.documentElement.style.setProperty('--card-radius', `${event.target.value}px`));
-document.querySelector('#compact').addEventListener('change', (event) => workspace.classList.toggle('compact', event.target.checked));
 logoutButton.addEventListener('click', logout);
 
 initializeApp();
