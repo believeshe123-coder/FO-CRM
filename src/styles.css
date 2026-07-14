@@ -108,3 +108,7 @@ button { cursor: pointer; }
 .step-row input[type='color'] { height: 42px; padding: 3px; }
 .compact .pipeline-toolbar { margin-top: 18px; }
 .compact .board { grid-template-columns: repeat(var(--stage-count, 3), minmax(190px, 1fr)); gap: 10px; }
+
+.empty-pipelines { margin: 34px; min-height: 260px; display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--card-radius); background: #fff; color: var(--muted); font-weight: 800; text-align: center; }
+.empty-pipelines p { margin: 0; }
+.empty-pipelines--board { grid-column: 1 / -1; margin: 0; }
