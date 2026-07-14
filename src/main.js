@@ -9,6 +9,7 @@ let pipelines = [];
 let activePipelineId = null;
 let currentSession = null;
 let currentUser = null;
+let currentGroup = null;
 
 const content = document.querySelector('#content');
 const pageTitle = document.querySelector('#page-title');
@@ -55,6 +56,7 @@ function renderAuthView(message = '') {
   pipelines = [];
   activePipelineId = null;
   currentUser = null;
+  currentGroup = null;
   pageTitle.textContent = 'Sign in';
   breadcrumb.textContent = 'Account';
   authPanel.hidden = true;
@@ -63,7 +65,7 @@ function renderAuthView(message = '') {
       <form class="auth-card" id="auth-form">
         <span class="auth-kicker">Supabase Auth</span>
         <h3>Sign in to your CRM</h3>
-        <p>Use an email and password to save pipelines, steps, and items to your Supabase project.</p>
+        <p>Use an email and password to save pipelines, steps, and items to your Supabase project. New accounts must confirm their email from Supabase Auth before login works.</p>
         <label>Email<input id="auth-email" type="email" autocomplete="email" required /></label>
         <label>Password<input id="auth-password" type="password" autocomplete="current-password" required minlength="6" /></label>
         <div class="auth-actions">
@@ -83,6 +85,109 @@ function updateAuthShell() {
   userEmail.textContent = currentUser?.email || '';
 }
 
+function generateGroupCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function renderGroupView(message = '') {
+  pipelines = [];
+  activePipelineId = null;
+  currentGroup = null;
+  pageTitle.textContent = 'Choose a group';
+  breadcrumb.textContent = 'Groups';
+  updateAuthShell();
+  content.innerHTML = `
+    <section class="auth-view" aria-live="polite">
+      <div class="group-card">
+        <span class="auth-kicker">Shared CRM workspace</span>
+        <h3>Join or create a group</h3>
+        <p>Everyone in the same group can see and update the shared pipelines, steps, and items.</p>
+        <form id="join-group-form" class="group-form">
+          <label>Join group with code<input id="group-code" type="text" autocomplete="off" placeholder="ABC123" required /></label>
+          <button class="primary-action" type="submit">Join group</button>
+        </form>
+        <div class="group-divider"><span>or</span></div>
+        <form id="create-group-form" class="group-form">
+          <label>New group name<input id="group-name" type="text" autocomplete="organization" placeholder="Sales team" required /></label>
+          <button class="secondary-action" type="submit">Create new group</button>
+        </form>
+        <p class="helper">Share the group code with teammates after creating a group.</p>
+        <p class="status-message ${message ? 'error' : ''}">${escapeHtml(message)}</p>
+      </div>
+    </section>`;
+  document.querySelector('#join-group-form').addEventListener('submit', joinGroup);
+  document.querySelector('#create-group-form').addEventListener('submit', createGroup);
+}
+
+async function loadUserGroup() {
+  const { data, error } = await requireSupabase()
+    .from('group_members')
+    .select('group_id, groups(id, name, code)')
+    .eq('user_id', currentUser.id)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  currentGroup = data?.groups || null;
+  if (!currentGroup) {
+    renderGroupView();
+    return;
+  }
+  await loadCrmData();
+}
+
+async function joinGroup(event) {
+  event.preventDefault();
+  const code = document.querySelector('#group-code').value.trim().toUpperCase();
+  if (!code || !currentUser) return;
+
+  try {
+    const { data: group, error: groupError } = await requireSupabase()
+      .from('groups')
+      .select('id, name, code')
+      .eq('code', code)
+      .maybeSingle();
+    if (groupError) throw groupError;
+    if (!group) {
+      showMessage('We could not find a group with that code.', 'error');
+      return;
+    }
+
+    const { error: memberError } = await requireSupabase()
+      .from('group_members')
+      .upsert({ group_id: group.id, user_id: currentUser.id }, { onConflict: 'group_id,user_id' });
+    if (memberError) throw memberError;
+    currentGroup = group;
+    await loadUserGroup();
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
+async function createGroup(event) {
+  event.preventDefault();
+  const name = document.querySelector('#group-name').value.trim();
+  if (!name || !currentUser) return;
+
+  try {
+    const { data: group, error: groupError } = await requireSupabase()
+      .from('groups')
+      .insert({ name, code: generateGroupCode(), created_by: currentUser.id })
+      .select('id, name, code')
+      .single();
+    if (groupError) throw groupError;
+
+    const { error: memberError } = await requireSupabase()
+      .from('group_members')
+      .insert({ group_id: group.id, user_id: currentUser.id });
+    if (memberError) throw memberError;
+    currentGroup = group;
+    await loadUserGroup();
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
+
 async function loadCrmData() {
   const client = requireSupabase();
   renderLoadingView();
@@ -90,7 +195,7 @@ async function loadCrmData() {
   const { data: pipelineRows, error: pipelineError } = await client
     .from('pipelines')
     .select('id, name, created_at')
-    .eq('user_id', currentUser.id)
+    .eq('group_id', currentGroup.id)
     .order('created_at', { ascending: true });
   if (pipelineError) throw pipelineError;
 
@@ -100,8 +205,8 @@ async function loadCrmData() {
 
   if (pipelineIds.length) {
     const [{ data: steps, error: stepsError }, { data: items, error: itemsError }] = await Promise.all([
-      client.from('pipeline_steps').select('id, pipeline_id, title, subtitle, color, position, created_at').eq('user_id', currentUser.id).in('pipeline_id', pipelineIds).order('position', { ascending: true }),
-      client.from('pipeline_items').select('id, pipeline_id, step_id, title, value, note, created_at').eq('user_id', currentUser.id).in('pipeline_id', pipelineIds).order('created_at', { ascending: true }),
+      client.from('pipeline_steps').select('id, pipeline_id, title, subtitle, color, position, created_at').eq('group_id', currentGroup.id).in('pipeline_id', pipelineIds).order('position', { ascending: true }),
+      client.from('pipeline_items').select('id, pipeline_id, step_id, title, value, note, created_at').eq('group_id', currentGroup.id).in('pipeline_id', pipelineIds).order('created_at', { ascending: true }),
     ]);
     if (stepsError) throw stepsError;
     if (itemsError) throw itemsError;
@@ -141,12 +246,13 @@ function renderPipelineView() {
 
   const pipeline = activePipeline();
   pageTitle.textContent = 'Pipelines';
-  breadcrumb.innerHTML = pipeline ? `Pipelines / <span>${escapeHtml(pipeline.name)}</span>⌄` : 'Pipelines';
+  breadcrumb.innerHTML = pipeline ? `Groups / <span>${escapeHtml(currentGroup?.name || 'Group')}</span> / ${escapeHtml(pipeline.name)}⌄` : `Groups / <span>${escapeHtml(currentGroup?.name || 'Group')}</span>`;
 
   if (!pipeline) {
     content.innerHTML = `
       <section class="pipeline-toolbar" aria-label="Pipeline controls">
         <div class="toolbar-left">
+          <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
           <button class="secondary-action" id="open-pipeline-modal">▦ New pipeline</button>
         </div>
       </section>
@@ -161,6 +267,7 @@ function renderPipelineView() {
   content.innerHTML = `
     <section class="pipeline-toolbar" aria-label="Pipeline controls">
       <div class="toolbar-left">
+        <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
         <button class="primary-action" id="open-item-modal">＋ Add item</button>
         <button class="secondary-action" id="open-pipeline-modal">▦ New pipeline</button>
       </div>
@@ -225,7 +332,7 @@ async function addItem(event) {
   const pipeline = activePipeline();
   const title = document.querySelector('#item-title').value.trim();
   if (!pipeline || !title || !currentUser) return;
-  const payload = { user_id: currentUser.id, pipeline_id: pipeline.id, step_id: document.querySelector('#item-step').value, title, value: Number(document.querySelector('#item-value').value || 0), note: document.querySelector('#item-note').value || 'No note' };
+  const payload = { user_id: currentUser.id, group_id: currentGroup.id, pipeline_id: pipeline.id, step_id: document.querySelector('#item-step').value, title, value: Number(document.querySelector('#item-value').value || 0), note: document.querySelector('#item-note').value || 'No note' };
   const { data, error } = await requireSupabase().from('pipeline_items').insert(payload).select('id, pipeline_id, step_id, title, value, note').single();
   if (error) {
     showMessage(error.message, 'error', document.querySelector('#item-form'));
@@ -246,7 +353,7 @@ async function moveItem(event) {
   const previousStepId = item.stepId;
   item.stepId = stepId;
   renderPipelineView();
-  const { error } = await requireSupabase().from('pipeline_items').update({ step_id: stepId }).eq('id', itemId).eq('user_id', currentUser.id);
+  const { error } = await requireSupabase().from('pipeline_items').update({ step_id: stepId }).eq('id', itemId).eq('group_id', currentGroup.id);
   if (error) {
     item.stepId = previousStepId;
     renderPipelineView();
@@ -277,7 +384,7 @@ async function addPipeline(event) {
 
   const { data: pipeline, error: pipelineError } = await requireSupabase()
     .from('pipelines')
-    .insert({ user_id: currentUser.id, name })
+    .insert({ user_id: currentUser.id, group_id: currentGroup.id, name })
     .select('id, name')
     .single();
   if (pipelineError) {
@@ -287,6 +394,7 @@ async function addPipeline(event) {
 
   const stepPayloads = rows.map((row, index) => ({
     user_id: currentUser.id,
+    group_id: currentGroup.id,
     pipeline_id: pipeline.id,
     title: row.querySelector('.step-name').value.trim() || `Step ${index + 1}`,
     subtitle: row.querySelector('.step-subtitle').value.trim(),
@@ -322,7 +430,7 @@ async function signIn(event) {
     if (error) throw error;
     currentSession = data.session;
     currentUser = data.user;
-    await loadCrmData();
+    await loadUserGroup();
   } catch (error) {
     showMessage(getAuthErrorMessage(error, 'sign-in'));
   }
@@ -335,6 +443,7 @@ function getAuthErrorMessage(error, action) {
   if (message.includes('missing') && message.includes('configuration')) return error.message;
   if (message.includes('invalid login') || message.includes('invalid credentials')) return 'We could not sign you in. Check your email and password, then try again.';
   if (message.includes('already registered') || message.includes('already exists')) return 'An account already exists for this email. Try signing in instead.';
+  if (message.includes('email not confirmed') || message.includes('not confirmed')) return 'Please confirm your email before signing in. Look for the confirmation email from Supabase Auth.';
   if (message.includes('password')) return 'Please use a password that meets the signup requirements.';
   if (message.includes('email')) return 'Please enter a valid email address.';
   if (action === 'sign-up') return 'We could not create your account. Check your email and password, then try again.';
@@ -350,10 +459,10 @@ async function signUp() {
     if (data.session) {
       currentSession = data.session;
       currentUser = data.user;
-      await loadCrmData();
+      await loadUserGroup();
       return;
     }
-    showMessage('Account created. Check your email to confirm your signup before signing in.', 'success');
+    showMessage('Account created. Before signing in, check your email and click the confirmation link from Supabase Auth.', 'success');
   } catch (error) {
     showMessage(getAuthErrorMessage(error, 'sign-up'));
   }
@@ -364,6 +473,7 @@ async function logout() {
   await client.auth.signOut();
   currentSession = null;
   currentUser = null;
+  currentGroup = null;
   renderAuthView();
 }
 
@@ -378,7 +488,7 @@ async function initializeApp() {
       renderAuthView();
       return;
     }
-    await loadCrmData();
+    await loadUserGroup();
   } catch (error) {
     renderAuthView(error.message);
   }
