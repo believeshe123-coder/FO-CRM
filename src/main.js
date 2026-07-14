@@ -26,7 +26,16 @@ function money(value) {
 }
 
 function renderDeals() {
+  const pipelineValue = deals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+  const activeDeals = deals.length;
+  const owners = new Set(deals.map((deal) => deal.owner)).size;
   content.innerHTML = `
+    <section class="metrics" aria-label="Pipeline summary">
+      <article class="metric"><span>Pipeline value</span><b>${money(pipelineValue)}</b><small>Live forecast</small></article>
+      <article class="metric"><span>Active deals</span><b>${activeDeals}</b><small>Across 5 stages</small></article>
+      <article class="metric"><span>Owners</span><b>${owners}</b><small>Team coverage</small></article>
+      <article class="metric"><span>Open tasks</span><b>${tasks.length}</b><small>Next actions</small></article>
+    </section>
     <section class="prompt-row" aria-label="Smart prompts">
       <button>✦ Find stalled deals</button>
       <button>✦ What's my forecasted revenue?</button>
@@ -55,7 +64,7 @@ function renderStage(stage) {
 }
 
 function renderDealCard(deal) {
-  return `<article class="deal-card"><div><span class="avatar">●</span><a>${deal.name}</a></div><b>${money(deal.value)}</b><small>${deal.age} · ${deal.task}</small></article>`;
+  return `<article class="deal-card"><div><span class="avatar">${deal.name.slice(0, 1).toUpperCase()}</span><a>${deal.name}</a></div><b>${money(deal.value)}</b><small>${deal.age} · ${deal.task}</small></article>`;
 }
 
 function addDeal(event) {
