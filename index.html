@@ -14,6 +14,10 @@
       <section class="shell">
         <nav class="sidebar">
           <h1>CRM Manager</h1>
+          <div class="auth-panel" id="auth-panel" hidden>
+            <span id="user-email"></span>
+            <button class="secondary-action" id="logout-button" type="button">Log out</button>
+          </div>
           <div class="customizer">
             <p>CUSTOMIZE</p>
             <label>Accent color<input id="accent" type="color" value="#0b55ff" /></label>
@@ -29,6 +33,7 @@
         </section>
       </section>
     </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/src/main.js"></script>
   </body>
 </html>

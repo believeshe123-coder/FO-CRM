@@ -112,3 +112,19 @@ button { cursor: pointer; }
 .empty-pipelines { margin: 34px; min-height: 260px; display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--card-radius); background: #fff; color: var(--muted); font-weight: 800; text-align: center; }
 .empty-pipelines p { margin: 0; }
 .empty-pipelines--board { grid-column: 1 / -1; margin: 0; }
+
+.auth-panel { margin: 0 8px 18px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fff; display: grid; gap: 10px; box-shadow: 0 12px 35px rgba(26, 39, 77, .08); }
+.auth-panel[hidden] { display: none; }
+.auth-panel span { color: var(--muted); font-size: 12px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-panel button { width: 100%; }
+.auth-view { min-height: calc(100vh - 122px); display: grid; place-items: center; padding: 34px; }
+.auth-card { width: min(440px, 100%); border: 1px solid var(--line); border-radius: 24px; padding: 28px; background: #fff; display: grid; gap: 14px; box-shadow: 0 22px 55px rgba(30, 43, 78, .12); }
+.auth-card h3 { margin: 0; font-size: 28px; letter-spacing: -.04em; }
+.auth-card p { margin: 0; color: var(--muted); line-height: 1.5; font-weight: 700; }
+.auth-card label { display: grid; gap: 8px; color: #47516a; font-size: 13px; font-weight: 800; }
+.auth-card input { border: 1px solid #cbd4e5; border-radius: 12px; padding: 12px; background: #fff; color: var(--ink); }
+.auth-kicker { width: fit-content; color: var(--accent); background: #e9efff; border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 900; }
+.auth-actions { display: flex; gap: 10px; align-items: center; }
+.status-message { min-height: 20px; font-size: 13px; font-weight: 800; }
+.status-message.error { color: #dc2626; }
+.status-message.success { color: #16a34a; }
