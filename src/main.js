@@ -1,7 +1,9 @@
-const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = window.__SUPABASE_CONFIG__?.url || '';
+const SUPABASE_PUBLISHABLE_KEY = window.__SUPABASE_CONFIG__?.publishableKey || '';
 
-const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
+  ? window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
+  : null;
 
 let pipelines = [];
 let activePipelineId = null;
@@ -36,8 +38,8 @@ function escapeHtml(value) {
 }
 
 function requireSupabase() {
-  if (!supabaseClient || SUPABASE_URL.includes('YOUR_PROJECT_REF') || SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY')) {
-    throw new Error('Supabase is not configured. Add your project URL and anon key in src/main.js.');
+  if (!supabaseClient) {
+    throw new Error('Supabase public configuration is missing. Check the Vercel environment variables and redeploy.');
   }
   return supabaseClient;
 }
@@ -322,8 +324,21 @@ async function signIn(event) {
     currentUser = data.user;
     await loadCrmData();
   } catch (error) {
-    showMessage(error.message);
+    showMessage(getAuthErrorMessage(error, 'sign-in'));
   }
+}
+
+function getAuthErrorMessage(error, action) {
+  if (!navigator.onLine) return 'You appear to be offline. Check your internet connection and try again.';
+
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('missing') && message.includes('configuration')) return error.message;
+  if (message.includes('invalid login') || message.includes('invalid credentials')) return 'We could not sign you in. Check your email and password, then try again.';
+  if (message.includes('already registered') || message.includes('already exists')) return 'An account already exists for this email. Try signing in instead.';
+  if (message.includes('password')) return 'Please use a password that meets the signup requirements.';
+  if (message.includes('email')) return 'Please enter a valid email address.';
+  if (action === 'sign-up') return 'We could not create your account. Check your email and password, then try again.';
+  return 'We could not sign you in. Check your email and password, then try again.';
 }
 
 async function signUp() {
@@ -340,7 +355,7 @@ async function signUp() {
     }
     showMessage('Account created. Check your email to confirm your signup before signing in.', 'success');
   } catch (error) {
-    showMessage(error.message);
+    showMessage(getAuthErrorMessage(error, 'sign-up'));
   }
 }
 
