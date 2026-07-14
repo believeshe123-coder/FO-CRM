@@ -219,7 +219,7 @@ async function loadCrmData() {
     name: pipeline.name,
     steps: stepRows
       .filter((step) => step.pipeline_id === pipeline.id)
-      .map((step) => ({ id: step.id, title: step.title, subtitle: step.subtitle, color: step.color || '#0b55ff' })),
+      .map((step) => ({ id: step.id, title: step.title, subtitle: step.subtitle, color: step.color || '#102b63' })),
     items: itemRows
       .filter((item) => item.pipeline_id === pipeline.id)
       .map((item) => ({ id: item.id, title: item.title, value: item.value, note: item.note, stepId: item.step_id })),
@@ -371,13 +371,13 @@ async function moveItem(event) {
 
 function openPipelineModal() {
   document.querySelector('#step-builder').innerHTML = '';
-  addStepRow('Lead', '#0b55ff');
-  addStepRow('Qualified', '#7c3aed');
-  addStepRow('Won', '#16a34a');
+  addStepRow('Lead', '#102b63');
+  addStepRow('Qualified', '#e0ad4f');
+  addStepRow('Won', '#5f6f93');
   document.querySelector('#pipeline-modal').showModal();
 }
 
-function addStepRow(name = '', color = '#0b55ff') {
+function addStepRow(name = '', color = '#102b63') {
   const row = document.createElement('div');
   row.className = 'step-row';
   row.innerHTML = `<input class="step-name" placeholder="Step name" value="${escapeHtml(name)}" required /><input class="step-subtitle" placeholder="Step description" /><input class="step-color" type="color" value="${escapeHtml(color)}" />`;
