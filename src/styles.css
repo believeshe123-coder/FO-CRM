@@ -54,20 +54,29 @@ button { cursor: pointer; }
 .prompt-row { display: flex; gap: 12px; padding: 18px 34px; }
 .prompt-row button { background: #fff; color: #273149; border: 1px solid var(--line); border-radius: 999px; padding: 10px 15px; font-weight: 800; box-shadow: 0 10px 22px rgba(24, 36, 72, .06); }
 .prompt-row button:first-child { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, #dbe3f1); }
+.pipeline-toolbar { margin: 28px 34px 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.toolbar-left { display: flex; align-items: center; gap: 10px; }
+.primary-action, .secondary-action { border: 0; border-radius: 12px; padding: 11px 16px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 900; }
+.primary-action { color: #fff; background: linear-gradient(135deg, var(--accent), #4f46e5); box-shadow: 0 12px 22px rgba(11, 85, 255, .24); }
+.secondary-action { color: #273149; background: #fff; border: 1px solid var(--line); box-shadow: 0 10px 22px rgba(24, 36, 72, .06); }
+.pipeline-picker { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.pipeline-picker select { min-width: 220px; border: 1px solid #cbd4e5; border-radius: 12px; padding: 10px 12px; background: #fff; color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 800; }
 .create-bar { margin: 0 34px 22px; background: #eef3fb; display: grid; grid-template-columns: minmax(260px, 1fr) 130px 240px auto; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; }
 .create-bar input, .create-bar select, .create-card input { border: 1px solid #cbd4e5; border-radius: 12px; padding: 11px 12px; background: #fff; color: var(--ink); }
 .create-bar button, .create-card button { border: 0; color: #fff; background: linear-gradient(135deg, var(--accent), #4f46e5); border-radius: 12px; padding: 11px 16px; display: flex; align-items: center; justify-content: center; gap: 5px; font-weight: 900; box-shadow: 0 12px 22px rgba(11, 85, 255, .24); }
 
-.board { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: 16px; padding: 0 34px 36px; }
+.board { display: grid; grid-template-columns: repeat(var(--stage-count, 3), minmax(230px, 1fr)); gap: 16px; padding: 0 34px 36px; overflow-x: auto; }
 .stage { border: 1px solid var(--line); border-radius: var(--card-radius); overflow: hidden; background: #fff; min-height: 320px; box-shadow: 0 18px 40px rgba(26, 39, 77, .08); }
 .stage header { color: #fff; padding: 16px 14px; min-height: 78px; }
 .stage header strong, .stage header span { display: block; font-size: 14px; line-height: 1.25; }
 .stage header span { margin-top: 4px; font-weight: 600; opacity: .92; }
 .stage-summary { display: flex; justify-content: space-between; border-bottom: 1px solid #e7ecf5; padding: 10px 12px; font-size: 12px; color: var(--muted); }
 .stage-summary b { color: var(--ink); }
-.cards { padding: 10px; display: grid; gap: 10px; }
+.cards { padding: 10px; display: grid; gap: 10px; min-height: 190px; align-content: start; transition: background .2s ease, outline-color .2s ease; }
+.cards.drag-over { background: color-mix(in srgb, var(--accent) 10%, #fff); outline: 2px dashed var(--accent); outline-offset: -8px; }
 .empty { text-align: center; line-height: 1.5; color: #727d96; margin: 28px 8px; font-weight: 700; }
-.deal-card { display: grid; gap: 10px; border: 1px solid #e8edf6; border-radius: calc(var(--card-radius) - 4px); padding: 12px; font-size: 12px; background: #fff; box-shadow: 0 10px 20px rgba(26, 39, 77, .06); }
+.deal-card { display: grid; gap: 10px; border: 1px solid #e8edf6; border-radius: calc(var(--card-radius) - 4px); padding: 12px; font-size: 12px; background: #fff; box-shadow: 0 10px 20px rgba(26, 39, 77, .06); cursor: grab; }
+.deal-card:active { cursor: grabbing; }
 .deal-card div { display: flex; gap: 9px; align-items: center; }
 .deal-card a { color: var(--ink); font-weight: 900; text-decoration: none; }
 .deal-card b { justify-self: end; font-size: 16px; }
@@ -84,3 +93,18 @@ button { cursor: pointer; }
 .task { border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: var(--card-radius); padding: 16px; display: grid; grid-template-columns: 1fr auto; gap: 6px; background: #fff; box-shadow: 0 12px 24px rgba(30, 43, 78, .06); }
 .task span { color: var(--muted); }
 .task em { color: var(--accent); font-style: normal; font-weight: 900; grid-row: span 2; align-self: center; }
+
+
+.modal { border: 0; border-radius: 24px; padding: 0; width: min(520px, calc(100vw - 40px)); box-shadow: 0 30px 90px rgba(0, 0, 0, .35); }
+.modal::backdrop { background: rgba(7, 10, 20, .58); backdrop-filter: blur(3px); }
+.modal-card { display: grid; gap: 12px; padding: 22px; background: #fff; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.modal-head h3 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
+.modal-head button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--muted); font-size: 20px; }
+.modal-card input, .modal-card select { border: 1px solid #cbd4e5; border-radius: 12px; padding: 11px 12px; background: #fff; color: var(--ink); }
+.helper { margin: 0; color: var(--muted); font-size: 13px; font-weight: 700; }
+#step-builder { display: grid; gap: 10px; }
+.step-row { display: grid; grid-template-columns: 1fr 1fr 54px; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: #f7f9fc; }
+.step-row input[type='color'] { height: 42px; padding: 3px; }
+.compact .pipeline-toolbar { margin-top: 18px; }
+.compact .board { grid-template-columns: repeat(var(--stage-count, 3), minmax(190px, 1fr)); gap: 10px; }
