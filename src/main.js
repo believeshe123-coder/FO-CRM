@@ -5,29 +5,25 @@ const supabaseClient = SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
   ? window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
   : null;
 
-let pipelines = [];
-let activePipelineId = null;
 let currentSession = null;
 let currentUser = null;
 let currentGroup = null;
+let dashboardElements = [];
+let activeDrag = null;
+let activeResize = null;
+let topZIndex = 20;
 
 const content = document.querySelector('#content');
 const pageTitle = document.querySelector('#page-title');
-const workspace = document.querySelector('#workspace');
 const breadcrumb = document.querySelector('#breadcrumb');
 const authPanel = document.querySelector('#auth-panel');
 const userEmail = document.querySelector('#user-email');
 const logoutButton = document.querySelector('#logout-button');
 
-function money(value) {
-  const amount = Number(value || 0);
-  if (amount >= 1000) return `$${Math.round(amount / 1000)}k`;
-  return `$${amount}`;
-}
-
-function activePipeline() {
-  return pipelines.find((pipeline) => pipeline.id === activePipelineId) || null;
-}
+const ELEMENT_DEFAULTS = {
+  note: { width: 280, height: 180, title: 'Note', content: 'Type your note here…' },
+  calendar: { width: 430, height: 420, title: 'Calendar' },
+};
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -53,10 +49,9 @@ function showMessage(message, type = 'error', root = document) {
 }
 
 function renderAuthView(message = '') {
-  pipelines = [];
-  activePipelineId = null;
   currentUser = null;
   currentGroup = null;
+  dashboardElements = [];
   pageTitle.textContent = 'Sign in';
   breadcrumb.textContent = 'Account';
   authPanel.hidden = true;
@@ -65,7 +60,7 @@ function renderAuthView(message = '') {
       <form class="auth-card" id="auth-form">
         <span class="auth-kicker">Supabase Auth</span>
         <h3>Sign in to your CRM</h3>
-        <p>Use an email and password to save pipelines, steps, and items to your Supabase project. New accounts must confirm their email from Supabase Auth before login works.</p>
+        <p>Use an email and password to save your shared workspace to your Supabase project. New accounts must confirm their email from Supabase Auth before login works.</p>
         <label>Email<input id="auth-email" type="email" autocomplete="email" required /></label>
         <label>Password<input id="auth-password" type="password" autocomplete="current-password" required minlength="6" /></label>
         <div class="auth-actions">
@@ -90,8 +85,6 @@ function generateGroupCode() {
 }
 
 function renderGroupView(message = '') {
-  pipelines = [];
-  activePipelineId = null;
   currentGroup = null;
   pageTitle.textContent = 'Choose a group';
   breadcrumb.textContent = 'Groups';
@@ -99,9 +92,9 @@ function renderGroupView(message = '') {
   content.innerHTML = `
     <section class="auth-view" aria-live="polite">
       <div class="group-card">
-        <span class="auth-kicker">Shared CRM workspace</span>
+        <span class="auth-kicker">Shared dashboard workspace</span>
         <h3>Join or create a group</h3>
-        <p>Everyone in the same group can see and update the shared pipelines, steps, and items.</p>
+        <p>Everyone in the same group can open the shared dashboard workspace.</p>
         <form id="join-group-form" class="group-form">
           <label>Join group with code<input id="group-code" type="text" autocomplete="off" placeholder="ABC123" required /></label>
           <button class="primary-action" type="submit">Join group</button>
@@ -132,7 +125,8 @@ async function loadUserGroup() {
     renderGroupView();
     return;
   }
-  await loadCrmData();
+  loadDashboardData();
+  renderDashboardView();
 }
 
 async function joinGroup(event) {
@@ -187,246 +181,208 @@ async function createGroup(event) {
   }
 }
 
-
-async function loadCrmData() {
-  const client = requireSupabase();
-  renderLoadingView();
-
-  const { data: pipelineRows, error: pipelineError } = await client
-    .from('pipelines')
-    .select('id, name, created_at')
-    .eq('group_id', currentGroup.id)
-    .order('created_at', { ascending: true });
-  if (pipelineError) throw pipelineError;
-
-  const pipelineIds = (pipelineRows || []).map((pipeline) => pipeline.id);
-  let stepRows = [];
-  let itemRows = [];
-
-  if (pipelineIds.length) {
-    const [{ data: steps, error: stepsError }, { data: items, error: itemsError }] = await Promise.all([
-      client.from('pipeline_steps').select('id, pipeline_id, title, subtitle, color, position, created_at').eq('group_id', currentGroup.id).in('pipeline_id', pipelineIds).order('position', { ascending: true }),
-      client.from('pipeline_items').select('id, pipeline_id, step_id, title, value, note, created_at').eq('group_id', currentGroup.id).in('pipeline_id', pipelineIds).order('created_at', { ascending: true }),
-    ]);
-    if (stepsError) throw stepsError;
-    if (itemsError) throw itemsError;
-    stepRows = steps || [];
-    itemRows = items || [];
-  }
-
-  pipelines = (pipelineRows || []).map((pipeline) => ({
-    id: pipeline.id,
-    name: pipeline.name,
-    steps: stepRows
-      .filter((step) => step.pipeline_id === pipeline.id)
-      .map((step) => ({ id: step.id, title: step.title, subtitle: step.subtitle, color: step.color || '#102b63' })),
-    items: itemRows
-      .filter((item) => item.pipeline_id === pipeline.id)
-      .map((item) => ({ id: item.id, title: item.title, value: item.value, note: item.note, stepId: item.step_id })),
-  }));
-
-  if (!pipelines.some((pipeline) => pipeline.id === activePipelineId)) {
-    activePipelineId = pipelines[0]?.id || null;
-  }
-  updateAuthShell();
-  renderPipelineView();
+function dashboardStorageKey() {
+  return `fo-crm-dashboard:${currentGroup?.id || 'solo'}`;
 }
 
-function renderLoadingView() {
-  pageTitle.textContent = 'Loading';
-  breadcrumb.textContent = 'Pipelines';
-  content.innerHTML = '<section class="empty-pipelines" aria-live="polite"><p>Loading your CRM data…</p></section>';
+function loadDashboardData() {
+  try {
+    dashboardElements = JSON.parse(localStorage.getItem(dashboardStorageKey()) || '[]');
+  } catch {
+    dashboardElements = [];
+  }
+  topZIndex = Math.max(20, ...dashboardElements.map((element) => Number(element.zIndex || 1)));
 }
 
-function renderPipelineView() {
+function saveDashboardData() {
+  localStorage.setItem(dashboardStorageKey(), JSON.stringify(dashboardElements));
+}
+
+function renderDashboardView() {
   if (!currentSession) {
     renderAuthView();
     return;
   }
 
-  const pipeline = activePipeline();
-  pageTitle.textContent = 'Pipelines';
-  breadcrumb.innerHTML = pipeline ? `<span>${escapeHtml(currentGroup?.name || 'Group')}</span> / ${escapeHtml(pipeline.name)}` : `<span>${escapeHtml(currentGroup?.name || 'Group')}</span>`;
-
-  if (!pipeline) {
-    content.innerHTML = `
-      <section class="pipeline-toolbar" aria-label="Pipeline controls">
-        <div class="toolbar-left">
-          <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
-          <button class="secondary-action" id="open-pipeline-modal">▦ New pipeline</button>
-        </div>
-      </section>
-      <section class="empty-pipelines" aria-live="polite">
-        <p>No pipelines to be found, make a new pipeline to see steps here.</p>
-      </section>
-      ${renderPipelineModal()}`;
-    bindEmptyPipelineEvents();
-    return;
-  }
-
+  pageTitle.textContent = 'Dashboard';
+  breadcrumb.innerHTML = `<span>${escapeHtml(currentGroup?.name || 'Group')}</span> / Custom dashboard`;
+  updateAuthShell();
   content.innerHTML = `
-    <section class="pipeline-toolbar" aria-label="Pipeline controls">
+    <section class="dashboard-toolbar" aria-label="Dashboard controls">
       <div class="toolbar-left">
         <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
-        <button class="primary-action" id="open-item-modal">＋ Add item</button>
-        <button class="secondary-action" id="open-pipeline-modal">▦ New pipeline</button>
+        <button class="primary-action" id="add-note" type="button">＋ Add note</button>
+        <button class="secondary-action" id="add-calendar" type="button">▣ Add calendar</button>
       </div>
-      <label class="pipeline-picker">Pipeline
-        <select id="pipeline-select">${pipelines.map((item) => `<option value="${item.id}" ${item.id === pipeline.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select>
-      </label>
+      <p class="dashboard-hint">Drag by the top bar. Pull the bottom-right corner to resize.</p>
     </section>
-    <section class="board" style="--stage-count:${Math.max(pipeline.steps.length, 1)}" aria-label="${escapeHtml(pipeline.name)} board">
-      ${pipeline.steps.length ? pipeline.steps.map((step) => renderStep(step, pipeline)).join('') : `<div class="empty-pipelines empty-pipelines--board"><p>No steps to show yet.</p></div>`}
-    </section>
-    ${renderItemModal(pipeline)}
-    ${renderPipelineModal()}`;
-
-  bindPipelineEvents();
+    <section class="dashboard-canvas" id="dashboard-canvas" aria-label="Custom dashboard canvas">
+      ${dashboardElements.length ? dashboardElements.map(renderDashboardElement).join('') : renderEmptyDashboard()}
+    </section>`;
+  bindDashboardEvents();
 }
 
-function renderStep(step, pipeline) {
-  const stepItems = pipeline.items.filter((item) => item.stepId === step.id);
-  const total = stepItems.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  return `<article class="stage" data-step-id="${step.id}">
-    <header style="background:${escapeHtml(step.color)}"><strong>${escapeHtml(step.title)}</strong><span>${escapeHtml(step.subtitle || 'Drag cards here')}</span></header>
-    <div class="stage-summary"><span>${stepItems.length || 'No'} card${stepItems.length === 1 ? '' : 's'}</span><b>${money(total)}</b></div>
-    <div class="cards drop-zone" data-step-id="${step.id}">${stepItems.length ? stepItems.map(renderCard).join('') : '<p class="empty">No cards yet.<br />Use Add item to start.</p>'}</div>
+function renderEmptyDashboard() {
+  return '<div class="empty-dashboard"><h3>Start building your dashboard</h3><p>Add a note or calendar, then drag and stretch it into place.</p></div>';
+}
+
+function renderDashboardElement(element) {
+  const style = `left:${element.x}px; top:${element.y}px; width:${element.width}px; height:${element.height}px; z-index:${element.zIndex || 1};`;
+  return `<article class="dashboard-element dashboard-element--${escapeHtml(element.type)}" style="${style}" data-element-id="${escapeHtml(element.id)}">
+    <header class="element-header">
+      <strong>${escapeHtml(element.title)}</strong>
+      <button class="element-delete" type="button" aria-label="Delete ${escapeHtml(element.title)}">×</button>
+    </header>
+    <div class="element-body">${element.type === 'calendar' ? renderCalendar(element) : renderNote(element)}</div>
+    <span class="resize-handle" aria-hidden="true"></span>
   </article>`;
 }
 
-function renderCard(item) {
-  return `<article class="deal-card" draggable="true" data-item-id="${item.id}"><div><span class="avatar">${escapeHtml(item.title.slice(0, 1).toUpperCase())}</span><a>${escapeHtml(item.title)}</a></div><b>${money(item.value)}</b><small>${escapeHtml(item.note || 'No note')}</small></article>`;
+function renderNote(element) {
+  return `<textarea class="note-editor" aria-label="${escapeHtml(element.title)} text">${escapeHtml(element.content || '')}</textarea>`;
 }
 
-function renderItemModal(pipeline) {
-  return `<dialog class="modal" id="item-modal"><form method="dialog" class="modal-card" id="item-form"><div class="modal-head"><h3>Add item</h3><button type="button" class="modal-close" aria-label="Close">×</button></div><input id="item-title" placeholder="Item title" required /><input id="item-value" placeholder="Value (optional)" type="number" min="0" /><input id="item-note" placeholder="Short note" /><select id="item-step">${pipeline.steps.map((step) => `<option value="${step.id}">${escapeHtml(step.title)}</option>`).join('')}</select><p class="status-message"></p><button class="primary-action" value="default" type="submit">＋ Add item</button></form></dialog>`;
+function renderCalendar(element) {
+  const selectedDate = new Date(element.year, element.month, 1);
+  const monthName = selectedDate.toLocaleString(undefined, { month: 'long' });
+  const daysInMonth = new Date(element.year, element.month + 1, 0).getDate();
+  const startDay = selectedDate.getDay();
+  const cells = [];
+  for (let index = 0; index < startDay; index += 1) cells.push('<span class="calendar-cell calendar-cell--empty"></span>');
+  for (let day = 1; day <= daysInMonth; day += 1) cells.push(`<span class="calendar-cell">${day}</span>`);
+  return `<div class="calendar-widget">
+    <div class="calendar-controls">
+      <button class="calendar-prev" type="button">‹</button>
+      <strong>${escapeHtml(monthName)} ${element.year}</strong>
+      <button class="calendar-next" type="button">›</button>
+    </div>
+    <div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+    <div class="calendar-grid">${cells.join('')}</div>
+  </div>`;
 }
 
-function renderPipelineModal() {
-  return `<dialog class="modal" id="pipeline-modal"><form method="dialog" class="modal-card" id="pipeline-form"><div class="modal-head"><h3>Create pipeline</h3><button type="button" class="modal-close" aria-label="Close">×</button></div><input id="pipeline-name" placeholder="Pipeline name" required /><p class="helper">Add the steps you want to use for this pipeline.</p><div id="step-builder"></div><button class="secondary-action" id="add-step" type="button">＋ Add step</button><p class="status-message"></p><button class="primary-action" value="default" type="submit">Create pipeline</button></form></dialog>`;
-}
-
-function bindEmptyPipelineEvents() {
-  document.querySelector('#open-pipeline-modal').addEventListener('click', openPipelineModal);
-  document.querySelector('#pipeline-form').addEventListener('submit', addPipeline);
-  document.querySelector('#add-step').addEventListener('click', () => addStepRow());
-  bindModalCloseButtons();
-}
-
-function bindPipelineEvents() {
-  document.querySelector('#open-item-modal').addEventListener('click', () => document.querySelector('#item-modal').showModal());
-  document.querySelector('#open-pipeline-modal').addEventListener('click', openPipelineModal);
-  document.querySelector('#pipeline-select').addEventListener('change', (event) => { activePipelineId = event.target.value; renderPipelineView(); });
-  document.querySelector('#item-form').addEventListener('submit', addItem);
-  document.querySelector('#pipeline-form').addEventListener('submit', addPipeline);
-  document.querySelector('#add-step').addEventListener('click', () => addStepRow());
-  bindModalCloseButtons();
-  document.querySelectorAll('.deal-card').forEach((card) => card.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', card.dataset.itemId)));
-  document.querySelectorAll('.drop-zone').forEach((zone) => {
-    zone.addEventListener('dragover', (event) => { event.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', moveItem);
+function bindDashboardEvents() {
+  document.querySelector('#add-note').addEventListener('click', () => addDashboardElement('note'));
+  document.querySelector('#add-calendar').addEventListener('click', () => addDashboardElement('calendar'));
+  document.querySelectorAll('.dashboard-element').forEach((elementNode) => {
+    elementNode.addEventListener('pointerdown', bringElementForward);
+    elementNode.querySelector('.element-header').addEventListener('pointerdown', startElementDrag);
+    elementNode.querySelector('.resize-handle').addEventListener('pointerdown', startElementResize);
+    elementNode.querySelector('.element-delete').addEventListener('click', deleteDashboardElement);
   });
+  document.querySelectorAll('.note-editor').forEach((editor) => editor.addEventListener('input', updateNoteContent));
+  document.querySelectorAll('.calendar-prev').forEach((button) => button.addEventListener('click', () => changeCalendarMonth(button, -1)));
+  document.querySelectorAll('.calendar-next').forEach((button) => button.addEventListener('click', () => changeCalendarMonth(button, 1)));
 }
 
-function bindModalCloseButtons() {
-  document.querySelectorAll('.modal-close').forEach((button) => {
-    button.addEventListener('click', () => button.closest('dialog')?.close());
+function addDashboardElement(type) {
+  const defaults = ELEMENT_DEFAULTS[type];
+  const now = new Date();
+  dashboardElements.push({
+    id: `${type}-${Date.now()}`,
+    type,
+    title: defaults.title,
+    content: defaults.content || '',
+    x: 36 + (dashboardElements.length % 3) * 34,
+    y: 34 + (dashboardElements.length % 3) * 30,
+    width: defaults.width,
+    height: defaults.height,
+    month: now.getMonth(),
+    year: now.getFullYear(),
+    zIndex: ++topZIndex,
   });
+  saveDashboardData();
+  renderDashboardView();
 }
 
-async function addItem(event) {
-  event.preventDefault();
-  const pipeline = activePipeline();
-  const title = document.querySelector('#item-title').value.trim();
-  if (!pipeline || !title || !currentUser) return;
-  const payload = { user_id: currentUser.id, group_id: currentGroup.id, pipeline_id: pipeline.id, step_id: document.querySelector('#item-step').value, title, value: Number(document.querySelector('#item-value').value || 0), note: document.querySelector('#item-note').value || 'No note' };
-  const { data, error } = await requireSupabase().from('pipeline_items').insert(payload).select('id, pipeline_id, step_id, title, value, note').single();
-  if (error) {
-    showMessage(error.message, 'error', document.querySelector('#item-form'));
-    return;
-  }
-  pipeline.items.push({ id: data.id, title: data.title, value: data.value, note: data.note, stepId: data.step_id });
-  document.querySelector('#item-modal').close();
-  renderPipelineView();
+function findElement(id) {
+  return dashboardElements.find((element) => element.id === id);
 }
 
-async function moveItem(event) {
-  event.preventDefault();
-  event.currentTarget.classList.remove('drag-over');
-  const itemId = event.dataTransfer.getData('text/plain');
-  const stepId = event.currentTarget.dataset.stepId;
-  const item = activePipeline()?.items.find((card) => card.id === itemId);
-  if (!item || item.stepId === stepId) return;
-  const previousStepId = item.stepId;
-  item.stepId = stepId;
-  renderPipelineView();
-  const { error } = await requireSupabase().from('pipeline_items').update({ step_id: stepId }).eq('id', itemId).eq('group_id', currentGroup.id);
-  if (error) {
-    item.stepId = previousStepId;
-    renderPipelineView();
-    window.alert(error.message);
-  }
+function bringElementForward(event) {
+  const element = findElement(event.currentTarget.dataset.elementId);
+  if (!element) return;
+  element.zIndex = ++topZIndex;
+  event.currentTarget.style.zIndex = element.zIndex;
+  saveDashboardData();
 }
 
-function openPipelineModal() {
-  document.querySelector('#step-builder').innerHTML = '';
-  addStepRow('Lead', '#102b63');
-  addStepRow('Qualified', '#e0ad4f');
-  addStepRow('Won', '#5f6f93');
-  document.querySelector('#pipeline-modal').showModal();
+function startElementDrag(event) {
+  if (event.target.closest('button')) return;
+  const node = event.currentTarget.closest('.dashboard-element');
+  const element = findElement(node.dataset.elementId);
+  if (!element) return;
+  activeDrag = { element, node, startX: event.clientX, startY: event.clientY, initialX: element.x, initialY: element.y };
+  node.setPointerCapture(event.pointerId);
+  node.addEventListener('pointermove', dragElement);
+  node.addEventListener('pointerup', stopElementDrag, { once: true });
 }
 
-function addStepRow(name = '', color = '#102b63') {
-  const row = document.createElement('div');
-  row.className = 'step-row';
-  row.innerHTML = `<input class="step-name" placeholder="Step name" value="${escapeHtml(name)}" required /><input class="step-subtitle" placeholder="Step description" /><input class="step-color" type="color" value="${escapeHtml(color)}" />`;
-  document.querySelector('#step-builder').append(row);
+function dragElement(event) {
+  if (!activeDrag) return;
+  activeDrag.element.x = Math.max(0, activeDrag.initialX + event.clientX - activeDrag.startX);
+  activeDrag.element.y = Math.max(0, activeDrag.initialY + event.clientY - activeDrag.startY);
+  activeDrag.node.style.left = `${activeDrag.element.x}px`;
+  activeDrag.node.style.top = `${activeDrag.element.y}px`;
 }
 
-async function addPipeline(event) {
-  event.preventDefault();
-  const name = document.querySelector('#pipeline-name').value.trim();
-  const rows = [...document.querySelectorAll('.step-row')];
-  if (!name || !currentUser) return;
+function stopElementDrag(event) {
+  if (!activeDrag) return;
+  activeDrag.node.releasePointerCapture(event.pointerId);
+  activeDrag.node.removeEventListener('pointermove', dragElement);
+  activeDrag = null;
+  saveDashboardData();
+}
 
-  const { data: pipeline, error: pipelineError } = await requireSupabase()
-    .from('pipelines')
-    .insert({ user_id: currentUser.id, group_id: currentGroup.id, name })
-    .select('id, name')
-    .single();
-  if (pipelineError) {
-    showMessage(pipelineError.message, 'error', document.querySelector('#pipeline-form'));
-    return;
-  }
+function startElementResize(event) {
+  event.stopPropagation();
+  const node = event.currentTarget.closest('.dashboard-element');
+  const element = findElement(node.dataset.elementId);
+  if (!element) return;
+  activeResize = { element, node, startX: event.clientX, startY: event.clientY, initialWidth: element.width, initialHeight: element.height };
+  node.setPointerCapture(event.pointerId);
+  node.addEventListener('pointermove', resizeElement);
+  node.addEventListener('pointerup', stopElementResize, { once: true });
+}
 
-  const stepPayloads = rows.map((row, index) => ({
-    user_id: currentUser.id,
-    group_id: currentGroup.id,
-    pipeline_id: pipeline.id,
-    title: row.querySelector('.step-name').value.trim() || `Step ${index + 1}`,
-    subtitle: row.querySelector('.step-subtitle').value.trim(),
-    color: row.querySelector('.step-color').value,
-    position: index,
-  }));
+function resizeElement(event) {
+  if (!activeResize) return;
+  activeResize.element.width = Math.max(220, activeResize.initialWidth + event.clientX - activeResize.startX);
+  activeResize.element.height = Math.max(150, activeResize.initialHeight + event.clientY - activeResize.startY);
+  activeResize.node.style.width = `${activeResize.element.width}px`;
+  activeResize.node.style.height = `${activeResize.element.height}px`;
+}
 
-  let steps = [];
-  if (stepPayloads.length) {
-    const { data, error: stepsError } = await requireSupabase()
-      .from('pipeline_steps')
-      .insert(stepPayloads)
-      .select('id, title, subtitle, color, position');
-    if (stepsError) {
-      showMessage(stepsError.message, 'error', document.querySelector('#pipeline-form'));
-      return;
-    }
-    steps = (data || []).sort((first, second) => first.position - second.position);
-  }
+function stopElementResize(event) {
+  if (!activeResize) return;
+  activeResize.node.releasePointerCapture(event.pointerId);
+  activeResize.node.removeEventListener('pointermove', resizeElement);
+  activeResize = null;
+  saveDashboardData();
+}
 
-  pipelines.push({ id: pipeline.id, name: pipeline.name, items: [], steps: steps.map((step) => ({ id: step.id, title: step.title, subtitle: step.subtitle, color: step.color })) });
-  activePipelineId = pipeline.id;
-  document.querySelector('#pipeline-modal').close();
-  renderPipelineView();
+function updateNoteContent(event) {
+  const element = findElement(event.target.closest('.dashboard-element').dataset.elementId);
+  if (!element) return;
+  element.content = event.target.value;
+  saveDashboardData();
+}
+
+function changeCalendarMonth(button, delta) {
+  const element = findElement(button.closest('.dashboard-element').dataset.elementId);
+  if (!element) return;
+  const date = new Date(element.year, element.month + delta, 1);
+  element.month = date.getMonth();
+  element.year = date.getFullYear();
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function deleteDashboardElement(event) {
+  const id = event.target.closest('.dashboard-element').dataset.elementId;
+  dashboardElements = dashboardElements.filter((element) => element.id !== id);
+  saveDashboardData();
+  renderDashboardView();
 }
 
 async function signIn(event) {
@@ -482,6 +438,7 @@ async function logout() {
   currentSession = null;
   currentUser = null;
   currentGroup = null;
+  dashboardElements = [];
   renderAuthView();
 }
 
