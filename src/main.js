@@ -8,6 +8,7 @@ const supabaseClient = SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
 let currentSession = null;
 let currentUser = null;
 let currentGroup = null;
+let userGroups = [];
 let dashboardElements = [];
 let activeDrag = null;
 let activeResize = null;
@@ -19,6 +20,7 @@ const breadcrumb = document.querySelector('#breadcrumb');
 const authPanel = document.querySelector('#auth-panel');
 const userEmail = document.querySelector('#user-email');
 const logoutButton = document.querySelector('#logout-button');
+const groupSwitcher = document.querySelector('#group-switcher');
 
 const ELEMENT_DEFAULTS = {
   note: { width: 280, height: 180, title: 'Note', content: 'Type your note here…' },
@@ -51,7 +53,9 @@ function showMessage(message, type = 'error', root = document) {
 function renderAuthView(message = '') {
   currentUser = null;
   currentGroup = null;
+  userGroups = [];
   dashboardElements = [];
+  renderGroupSwitcher();
   pageTitle.textContent = 'Sign in';
   breadcrumb.textContent = 'Account';
   authPanel.hidden = true;
@@ -84,8 +88,46 @@ function generateGroupCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
+function getGroupInitial(name) {
+  return (String(name || '').trim().charAt(0) || '?').toUpperCase();
+}
+
+function renderGroupSwitcher() {
+  if (!groupSwitcher) return;
+  const addGroupButton = currentUser ? `
+    <button
+      class="group-switcher-button group-switcher-button--add"
+      type="button"
+      title="Join or create a business group"
+      aria-label="Join or create a business group"
+      data-group-action="manage"
+    >+</button>` : '';
+  groupSwitcher.innerHTML = `${userGroups.map((group) => `
+    <button
+      class="group-switcher-button ${group.id === currentGroup?.id ? 'active' : ''}"
+      type="button"
+      title="${escapeHtml(group.name)}"
+      aria-label="Switch to ${escapeHtml(group.name)}"
+      data-group-id="${escapeHtml(group.id)}"
+    >${escapeHtml(getGroupInitial(group.name))}</button>`).join('')}${addGroupButton}`;
+  groupSwitcher.querySelectorAll('[data-group-id]').forEach((button) => {
+    button.addEventListener('click', switchGroup);
+  });
+  groupSwitcher.querySelector('[data-group-action="manage"]')?.addEventListener('click', () => renderGroupView());
+}
+
+async function switchGroup(event) {
+  const group = userGroups.find((item) => item.id === event.currentTarget.dataset.groupId);
+  if (!group || group.id === currentGroup?.id) return;
+  currentGroup = group;
+  loadDashboardData();
+  renderGroupSwitcher();
+  renderDashboardView();
+}
+
 function renderGroupView(message = '') {
   currentGroup = null;
+  renderGroupSwitcher();
   pageTitle.textContent = 'Choose a group';
   breadcrumb.textContent = 'Groups';
   updateAuthShell();
@@ -101,10 +143,10 @@ function renderGroupView(message = '') {
         </form>
         <div class="group-divider"><span>or</span></div>
         <form id="create-group-form" class="group-form">
-          <label>New group name<input id="group-name" type="text" autocomplete="organization" placeholder="Sales team" required /></label>
+          <label>Business name<input id="group-name" type="text" autocomplete="organization" placeholder="Acme Co." required /></label>
           <button class="secondary-action" type="submit">Create new group</button>
         </form>
-        <p class="helper">Share the group code with teammates after creating a group.</p>
+        <p class="helper">Share the business group code with teammates after creating a group.</p>
         <p class="status-message ${message ? 'error' : ''}">${escapeHtml(message)}</p>
       </div>
     </section>`;
@@ -112,15 +154,20 @@ function renderGroupView(message = '') {
   document.querySelector('#create-group-form').addEventListener('submit', createGroup);
 }
 
-async function loadUserGroup() {
+async function loadUserGroup(preferredGroupId = currentGroup?.id) {
   const { data, error } = await requireSupabase()
     .from('group_members')
     .select('group_id, groups(id, name, code)')
-    .eq('user_id', currentUser.id)
-    .limit(1)
-    .maybeSingle();
+    .eq('user_id', currentUser.id);
   if (error) throw error;
-  currentGroup = data?.groups || null;
+
+  userGroups = (data || [])
+    .map((membership) => membership.groups)
+    .filter(Boolean)
+    .sort((left, right) => left.name.localeCompare(right.name));
+  currentGroup = userGroups.find((group) => group.id === preferredGroupId) || userGroups[0] || null;
+  renderGroupSwitcher();
+
   if (!currentGroup) {
     renderGroupView();
     return;
@@ -151,7 +198,7 @@ async function joinGroup(event) {
       .upsert({ group_id: group.id, user_id: currentUser.id }, { onConflict: 'group_id,user_id' });
     if (memberError) throw memberError;
     currentGroup = group;
-    await loadUserGroup();
+    await loadUserGroup(group.id);
   } catch (error) {
     showMessage(error.message, 'error');
   }
@@ -175,7 +222,7 @@ async function createGroup(event) {
       .insert({ group_id: group.id, user_id: currentUser.id });
     if (memberError) throw memberError;
     currentGroup = group;
-    await loadUserGroup();
+    await loadUserGroup(group.id);
   } catch (error) {
     showMessage(error.message, 'error');
   }
@@ -206,6 +253,7 @@ function renderDashboardView() {
 
   pageTitle.textContent = 'Dashboard';
   breadcrumb.innerHTML = `<span>${escapeHtml(currentGroup?.name || 'Group')}</span> / Custom dashboard`;
+  renderGroupSwitcher();
   updateAuthShell();
   content.innerHTML = `
     <section class="dashboard-toolbar" aria-label="Dashboard controls">
@@ -438,7 +486,9 @@ async function logout() {
   currentSession = null;
   currentUser = null;
   currentGroup = null;
+  userGroups = [];
   dashboardElements = [];
+  renderGroupSwitcher();
   renderAuthView();
 }
 

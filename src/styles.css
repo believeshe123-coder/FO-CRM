@@ -162,3 +162,9 @@ button { cursor: pointer; }
 .calendar-grid { grid-auto-rows: minmax(34px, 1fr); min-height: 0; }
 .calendar-cell { display: grid; place-items: start end; min-height: 34px; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: #fbfaf6; color: var(--ink); font-size: 12px; font-weight: 900; }
 .calendar-cell--empty { border-color: transparent; background: transparent; }
+
+.group-switcher { width: 44px; display: grid; gap: 10px; align-content: start; justify-items: center; }
+.group-switcher-button { width: 44px; height: 44px; border: 1px solid rgba(224, 173, 79, .34); border-radius: 10px; display: grid; place-items: center; color: #fbfaf6; background: rgba(16, 43, 99, .86); box-shadow: 0 12px 24px rgba(16, 43, 99, .16); font-weight: 900; text-transform: uppercase; }
+.group-switcher-button:hover, .group-switcher-button:focus-visible { border-color: var(--accent-2); background: #173a7f; outline: 2px solid rgba(224, 173, 79, .38); outline-offset: 2px; }
+.group-switcher-button.active { background: var(--accent-2); color: var(--accent); box-shadow: inset 0 0 0 3px rgba(251, 250, 246, .72), 0 14px 28px rgba(16, 43, 99, .22); }
+.group-switcher-button--add { border-style: dashed; color: var(--accent-2); background: rgba(16, 43, 99, .54); font-size: 22px; line-height: 1; }
