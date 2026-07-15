@@ -23,9 +23,15 @@ const logoutButton = document.querySelector('#logout-button');
 const groupSwitcher = document.querySelector('#group-switcher');
 
 const ELEMENT_DEFAULTS = {
-  note: { width: 280, height: 180, title: 'Note', content: 'Type your note here…' },
-  calendar: { width: 430, height: 420, title: 'Calendar' },
+  note: { width: 280, height: 180, title: 'Sticky note', content: 'Type your note here…', category: 'Quick tools' },
+  calendar: { width: 520, height: 500, title: 'Calendar', category: 'Scheduling', view: 'month', color: '#102b63', appointments: [] },
 };
+
+const ELEMENT_LIBRARY = Object.entries(ELEMENT_DEFAULTS).map(([type, defaults]) => ({
+  type,
+  title: defaults.title,
+  category: defaults.category || 'Elements',
+}));
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -259,8 +265,17 @@ function renderDashboardView() {
     <section class="dashboard-toolbar" aria-label="Dashboard controls">
       <div class="toolbar-left">
         <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
-        <button class="primary-action" id="add-note" type="button">＋ Add note</button>
-        <button class="secondary-action" id="add-calendar" type="button">▣ Add calendar</button>
+        <button class="primary-action" id="add-note" type="button">＋ Sticky note</button>
+        <details class="element-picker" open>
+          <summary class="secondary-action element-picker-toggle">＋ Add element</summary>
+          <div class="element-picker-panel">
+            <label class="element-search-label" for="element-search">Search elements</label>
+            <input class="element-search" id="element-search" type="search" placeholder="Search all elements…" autocomplete="off" />
+            <div class="element-tree" id="element-tree" role="tree">
+              ${renderElementTree()}
+            </div>
+          </div>
+        </details>
       </div>
       <p class="dashboard-hint">Drag by the top bar. Pull the bottom-right corner to resize.</p>
     </section>
@@ -270,16 +285,47 @@ function renderDashboardView() {
   bindDashboardEvents();
 }
 
+function renderElementTree(searchTerm = '') {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const visibleElements = ELEMENT_LIBRARY.filter((element) => {
+    const searchableText = `${element.title} ${element.category} ${element.type}`.toLowerCase();
+    return !normalizedSearch || searchableText.includes(normalizedSearch);
+  });
+  if (!visibleElements.length) {
+    return '<p class="element-tree-empty">No elements match your search.</p>';
+  }
+
+  const categories = [...new Set(visibleElements.map((element) => element.category))].sort((left, right) => left.localeCompare(right));
+  return categories.map((category) => {
+    const categoryElements = visibleElements.filter((element) => element.category === category);
+    return `<details class="element-tree-branch" open>
+      <summary role="treeitem">${escapeHtml(category)}</summary>
+      <div class="element-tree-items" role="group">
+        ${categoryElements.map((element) => `
+          <button class="element-tree-item" type="button" role="treeitem" data-element-type="${escapeHtml(element.type)}">
+            <span>${element.type === 'calendar' ? '▣' : '▪'}</span>
+            ${escapeHtml(element.title)}
+          </button>`).join('')}
+      </div>
+    </details>`;
+  }).join('');
+}
+
 function renderEmptyDashboard() {
   return '<div class="empty-dashboard"><h3>Start building your dashboard</h3><p>Add a note or calendar, then drag and stretch it into place.</p></div>';
 }
 
 function renderDashboardElement(element) {
-  const style = `left:${element.x}px; top:${element.y}px; width:${element.width}px; height:${element.height}px; z-index:${element.zIndex || 1};`;
+  if (element.type === 'calendar') getCalendarState(element);
+  const calendarColor = element.type === 'calendar' && element.color ? ` --calendar-color:${escapeHtml(element.color)};` : '';
+  const style = `left:${element.x}px; top:${element.y}px; width:${element.width}px; height:${element.height}px; z-index:${element.zIndex || 1};${calendarColor}`;
   return `<article class="dashboard-element dashboard-element--${escapeHtml(element.type)}" style="${style}" data-element-id="${escapeHtml(element.id)}">
     <header class="element-header">
       <strong>${escapeHtml(element.title)}</strong>
-      <button class="element-delete" type="button" aria-label="Delete ${escapeHtml(element.title)}">×</button>
+      <div class="element-header-actions">
+        ${element.type === 'calendar' ? '<button class="element-settings" type="button" aria-label="Calendar settings">⚙</button>' : ''}
+        <button class="element-delete" type="button" aria-label="Delete ${escapeHtml(element.title)}">×</button>
+      </div>
     </header>
     <div class="element-body">${element.type === 'calendar' ? renderCalendar(element) : renderNote(element)}</div>
     <span class="resize-handle" aria-hidden="true"></span>
@@ -290,37 +336,145 @@ function renderNote(element) {
   return `<textarea class="note-editor" aria-label="${escapeHtml(element.title)} text">${escapeHtml(element.content || '')}</textarea>`;
 }
 
+function getCalendarState(element) {
+  const today = new Date();
+  if (typeof element.month !== 'number') element.month = today.getMonth();
+  if (typeof element.year !== 'number') element.year = today.getFullYear();
+  if (!element.selectedDate) element.selectedDate = formatDateInput(today);
+  if (!element.view) element.view = 'month';
+  if (!element.color) element.color = '#102b63';
+  if (!Array.isArray(element.appointments)) element.appointments = [];
+  return element;
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getAppointmentsForDate(element, dateKey) {
+  return (element.appointments || [])
+    .filter((appointment) => appointment.date === dateKey)
+    .sort((left, right) => (left.time || '').localeCompare(right.time || ''));
+}
+
+function renderAppointmentList(appointments) {
+  if (!appointments.length) return '<p class="calendar-empty">No appointments yet.</p>';
+  return `<ul class="calendar-appointments">${appointments.map((appointment) => `
+    <li>
+      <span class="calendar-appointment-time">${escapeHtml(appointment.time || 'All day')}</span>
+      <span>${escapeHtml(appointment.title)}${appointment.note ? `<small>${escapeHtml(appointment.note)}</small>` : ''}</span>
+    </li>`).join('')}</ul>`;
+}
+
 function renderCalendar(element) {
-  const selectedDate = new Date(element.year, element.month, 1);
-  const monthName = selectedDate.toLocaleString(undefined, { month: 'long' });
-  const daysInMonth = new Date(element.year, element.month + 1, 0).getDate();
-  const startDay = selectedDate.getDay();
-  const cells = [];
-  for (let index = 0; index < startDay; index += 1) cells.push('<span class="calendar-cell calendar-cell--empty"></span>');
-  for (let day = 1; day <= daysInMonth; day += 1) cells.push(`<span class="calendar-cell">${day}</span>`);
-  return `<div class="calendar-widget">
+  getCalendarState(element);
+  const selectedDate = new Date(`${element.selectedDate}T00:00:00`);
+  const selectedMonth = new Date(element.year, element.month, 1);
+  const monthName = selectedMonth.toLocaleString(undefined, { month: 'long' });
+  return `<div class="calendar-widget" style="--calendar-color: ${escapeHtml(element.color)}">
     <div class="calendar-controls">
       <button class="calendar-prev" type="button">‹</button>
       <strong>${escapeHtml(monthName)} ${element.year}</strong>
       <button class="calendar-next" type="button">›</button>
     </div>
-    <div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
-    <div class="calendar-grid">${cells.join('')}</div>
+    <div class="calendar-tools">
+      <div class="calendar-view-tabs" role="tablist" aria-label="Calendar views">
+        ${['month', 'week', 'day'].map((view) => `<button class="calendar-view ${element.view === view ? 'active' : ''}" type="button" data-calendar-view="${view}">${view}</button>`).join('')}
+      </div>
+      <button class="calendar-add-appointment" type="button">＋ Appointment</button>
+    </div>
+    ${renderCalendarSettings(element)}
+    ${element.view === 'month' ? renderCalendarMonth(element) : ''}
+    ${element.view === 'week' ? renderCalendarWeek(element, selectedDate) : ''}
+    ${element.view === 'day' ? renderCalendarDay(element, selectedDate) : ''}
   </div>`;
+}
+
+function renderCalendarSettings(element) {
+  if (!element.settingsOpen) return '';
+  return `<div class="calendar-settings-panel">
+    <label>Color <input class="calendar-color-input" type="color" value="${escapeHtml(element.color)}" /></label>
+    <label>Jump to date <input class="calendar-date-input" type="date" value="${escapeHtml(element.selectedDate)}" /></label>
+  </div>`;
+}
+
+function renderCalendarMonth(element) {
+  const firstOfMonth = new Date(element.year, element.month, 1);
+  const daysInMonth = new Date(element.year, element.month + 1, 0).getDate();
+  const startDay = firstOfMonth.getDay();
+  const todayKey = formatDateInput(new Date());
+  const cells = [];
+  for (let index = 0; index < startDay; index += 1) cells.push('<button class="calendar-cell calendar-cell--empty" type="button" disabled></button>');
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = formatDateInput(new Date(element.year, element.month, day));
+    const appointments = getAppointmentsForDate(element, dateKey);
+    cells.push(`<button class="calendar-cell ${dateKey === todayKey ? 'calendar-cell--today' : ''} ${dateKey === element.selectedDate ? 'calendar-cell--selected' : ''}" type="button" data-calendar-date="${dateKey}" aria-label="${dateKey === todayKey ? `Today, ${dateKey}` : dateKey}: add appointment">
+      <span class="calendar-date-number">${day}</span>
+      ${dateKey === todayKey ? '<strong class="calendar-today-badge">Today</strong>' : ''}
+      ${appointments.slice(0, 2).map((appointment) => `<em>${escapeHtml(appointment.time || '')} ${escapeHtml(appointment.title)}</em>`).join('')}
+      ${appointments.length > 2 ? `<small>+${appointments.length - 2} more</small>` : ''}
+    </button>`);
+  }
+  return `<div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+    <div class="calendar-grid calendar-grid--month">${cells.join('')}</div>`;
+}
+
+function renderCalendarWeek(element, selectedDate) {
+  const start = new Date(selectedDate);
+  start.setDate(selectedDate.getDate() - selectedDate.getDay());
+  const todayKey = formatDateInput(new Date());
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const dateKey = formatDateInput(date);
+    return `<section class="calendar-day-column ${dateKey === todayKey ? 'calendar-day-column--today' : ''}">
+      <button type="button" data-calendar-date="${dateKey}" aria-label="Add appointment on ${dateKey}">${date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}${dateKey === todayKey ? '<span>Today</span>' : ''}</button>
+      ${renderAppointmentList(getAppointmentsForDate(element, dateKey))}
+    </section>`;
+  });
+  return `<div class="calendar-week-view">${days.join('')}</div>`;
+}
+
+function renderCalendarDay(element, selectedDate) {
+  const dateKey = formatDateInput(selectedDate);
+  const isToday = dateKey === formatDateInput(new Date());
+  return `<section class="calendar-day-view ${isToday ? 'calendar-day-view--today' : ''}">
+    <button class="calendar-day-title" type="button" data-calendar-date="${dateKey}" aria-label="Add appointment on ${dateKey}">${selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}${isToday ? '<span>Today</span>' : ''}</button>
+    ${renderAppointmentList(getAppointmentsForDate(element, dateKey))}
+  </section>`;
 }
 
 function bindDashboardEvents() {
   document.querySelector('#add-note').addEventListener('click', () => addDashboardElement('note'));
-  document.querySelector('#add-calendar').addEventListener('click', () => addDashboardElement('calendar'));
+  document.querySelector('#element-search')?.addEventListener('input', filterElementTree);
+  document.querySelectorAll('[data-element-type]').forEach((button) => {
+    button.addEventListener('click', () => addDashboardElement(button.dataset.elementType));
+  });
   document.querySelectorAll('.dashboard-element').forEach((elementNode) => {
     elementNode.addEventListener('pointerdown', bringElementForward);
     elementNode.querySelector('.element-header').addEventListener('pointerdown', startElementDrag);
     elementNode.querySelector('.resize-handle').addEventListener('pointerdown', startElementResize);
     elementNode.querySelector('.element-delete').addEventListener('click', deleteDashboardElement);
+    elementNode.querySelector('.element-settings')?.addEventListener('click', toggleCalendarSettings);
   });
   document.querySelectorAll('.note-editor').forEach((editor) => editor.addEventListener('input', updateNoteContent));
-  document.querySelectorAll('.calendar-prev').forEach((button) => button.addEventListener('click', () => changeCalendarMonth(button, -1)));
-  document.querySelectorAll('.calendar-next').forEach((button) => button.addEventListener('click', () => changeCalendarMonth(button, 1)));
+  document.querySelectorAll('.calendar-prev').forEach((button) => button.addEventListener('click', () => moveCalendar(button, -1)));
+  document.querySelectorAll('.calendar-next').forEach((button) => button.addEventListener('click', () => moveCalendar(button, 1)));
+  document.querySelectorAll('[data-calendar-view]').forEach((button) => button.addEventListener('click', changeCalendarView));
+  document.querySelectorAll('[data-calendar-date]').forEach((button) => button.addEventListener('click', selectCalendarDate));
+  document.querySelectorAll('.calendar-add-appointment').forEach((button) => button.addEventListener('click', addCalendarAppointment));
+  document.querySelectorAll('.calendar-color-input').forEach((input) => input.addEventListener('input', updateCalendarColor));
+  document.querySelectorAll('.calendar-date-input').forEach((input) => input.addEventListener('change', jumpCalendarDate));
+}
+
+function filterElementTree(event) {
+  document.querySelector('#element-tree').innerHTML = renderElementTree(event.target.value);
+  document.querySelectorAll('[data-element-type]').forEach((button) => {
+    button.addEventListener('click', () => addDashboardElement(button.dataset.elementType));
+  });
 }
 
 function addDashboardElement(type) {
@@ -337,6 +491,11 @@ function addDashboardElement(type) {
     height: defaults.height,
     month: now.getMonth(),
     year: now.getFullYear(),
+    selectedDate: formatDateInput(now),
+    view: defaults.view || 'month',
+    color: defaults.color || '#102b63',
+    appointments: defaults.appointments ? [...defaults.appointments] : [],
+    settingsOpen: false,
     zIndex: ++topZIndex,
   });
   saveDashboardData();
@@ -416,12 +575,88 @@ function updateNoteContent(event) {
   saveDashboardData();
 }
 
-function changeCalendarMonth(button, delta) {
-  const element = findElement(button.closest('.dashboard-element').dataset.elementId);
-  if (!element) return;
-  const date = new Date(element.year, element.month + delta, 1);
+function getCalendarElement(control) {
+  return findElement(control.closest('.dashboard-element').dataset.elementId);
+}
+
+function setCalendarFocus(element, date) {
+  element.selectedDate = formatDateInput(date);
   element.month = date.getMonth();
   element.year = date.getFullYear();
+}
+
+function moveCalendar(button, delta) {
+  const element = getCalendarElement(button);
+  if (!element) return;
+  getCalendarState(element);
+  const currentDate = new Date(`${element.selectedDate}T00:00:00`);
+  if (element.view === 'day') currentDate.setDate(currentDate.getDate() + delta);
+  else if (element.view === 'week') currentDate.setDate(currentDate.getDate() + (delta * 7));
+  else currentDate.setMonth(element.month + delta, 1);
+  setCalendarFocus(element, currentDate);
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function changeCalendarView(event) {
+  const element = getCalendarElement(event.target);
+  if (!element) return;
+  element.view = event.target.dataset.calendarView;
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function selectCalendarDate(event) {
+  const element = getCalendarElement(event.currentTarget);
+  if (!element) return;
+  const date = event.currentTarget.dataset.calendarDate;
+  setCalendarFocus(element, new Date(`${date}T00:00:00`));
+  createCalendarAppointment(element, date);
+}
+
+function toggleCalendarSettings(event) {
+  event.stopPropagation();
+  const element = getCalendarElement(event.currentTarget);
+  if (!element) return;
+  element.settingsOpen = !element.settingsOpen;
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function updateCalendarColor(event) {
+  const element = getCalendarElement(event.target);
+  if (!element) return;
+  element.color = event.target.value;
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function jumpCalendarDate(event) {
+  const element = getCalendarElement(event.target);
+  if (!element) return;
+  setCalendarFocus(element, new Date(`${event.target.value}T00:00:00`));
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function addCalendarAppointment(event) {
+  const element = getCalendarElement(event.target);
+  if (!element) return;
+  getCalendarState(element);
+  createCalendarAppointment(element, element.selectedDate);
+}
+
+function createCalendarAppointment(element, date) {
+  const title = window.prompt('Appointment title');
+  if (!title?.trim()) {
+    saveDashboardData();
+    renderDashboardView();
+    return;
+  }
+  const time = window.prompt('Appointment time (optional, HH:MM)', '') || '';
+  const note = window.prompt('Appointment note (optional)', '') || '';
+  element.appointments.push({ id: `appointment-${Date.now()}`, title: title.trim(), date, time, note });
+  setCalendarFocus(element, new Date(`${date}T00:00:00`));
   saveDashboardData();
   renderDashboardView();
 }
