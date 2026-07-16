@@ -23,6 +23,8 @@ const authPanel = document.querySelector('#auth-panel');
 const userEmail = document.querySelector('#user-email');
 const logoutButton = document.querySelector('#logout-button');
 const groupSwitcher = document.querySelector('#group-switcher');
+const topbarTitle = document.querySelector('#topbar-title');
+const topbarActions = document.querySelector('#topbar-actions');
 
 const ELEMENT_DEFAULTS = {
   note: { width: 280, height: 180, title: 'Sticky note', content: 'Type your note here…', category: 'Quick tools' },
@@ -58,7 +60,13 @@ function showMessage(message, type = 'error', root = document) {
   status.className = `status-message ${type}`;
 }
 
+function resetTopbar() {
+  topbarTitle?.classList.remove('topbar-title--dashboard');
+  if (topbarActions) topbarActions.innerHTML = '';
+}
+
 function renderAuthView(message = '') {
+  resetTopbar();
   currentUser = null;
   currentGroup = null;
   userGroups = [];
@@ -134,6 +142,7 @@ async function switchGroup(event) {
 }
 
 function renderGroupView(message = '') {
+  resetTopbar();
   currentGroup = null;
   renderGroupSwitcher();
   pageTitle.textContent = 'Choose a group';
@@ -272,18 +281,19 @@ function renderDashboardView() {
     return;
   }
 
-  pageTitle.textContent = 'Dashboard';
-  breadcrumb.innerHTML = `<span>${escapeHtml(currentGroup?.name || 'Group')}</span> / Custom dashboard`;
+  topbarTitle?.classList.add('topbar-title--dashboard');
+  pageTitle.textContent = currentGroup?.name || 'Group';
+  breadcrumb.innerHTML = `
+    <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-current">Custom Dashboard</span>
+    <button class="primary-action" id="add-note" type="button">＋ Sticky note</button>`;
+  if (topbarActions) {
+    topbarActions.innerHTML = '<button class="secondary-action dashboard-settings-button" type="button">⚙ Dashboard settings</button>';
+  }
   renderGroupSwitcher();
   updateAuthShell();
   content.innerHTML = `
-    <section class="dashboard-toolbar" aria-label="Dashboard controls">
-      <div class="toolbar-left">
-        <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
-        <button class="primary-action" id="add-note" type="button">＋ Sticky note</button>
-      </div>
-      <button class="secondary-action dashboard-settings-button" type="button">⚙ Dashboard settings</button>
-    </section>
     <section class="dashboard-canvas" id="dashboard-canvas" aria-label="Custom dashboard canvas">
       <div class="dashboard-surface" style="--dashboard-surface-width:${DASHBOARD_SURFACE_SIZE.width}px; --dashboard-surface-height:${DASHBOARD_SURFACE_SIZE.height}px; --dashboard-bg:${escapeHtml(dashboardSettings.backgroundColor || '#ffffff')};">${dashboardElements.length ? dashboardElements.map(renderDashboardElement).join('') : renderEmptyDashboard()}</div>
     </section>`;
