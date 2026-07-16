@@ -30,11 +30,14 @@ const ELEMENT_DEFAULTS = {
   note: { width: 280, height: 180, title: 'Sticky note', content: 'Type your note here…', category: 'Quick tools' },
 };
 
-const ELEMENT_LIBRARY = Object.entries(ELEMENT_DEFAULTS).map(([type, defaults]) => ({
-  type,
-  title: defaults.title,
-  category: defaults.category || 'Elements',
-}));
+const ELEMENT_LIBRARY = [];
+
+function getElementLibrary() {
+  return ELEMENT_LIBRARY.map((element) => ({
+    category: 'Elements',
+    ...element,
+  }));
+}
 const DASHBOARD_SURFACE_SIZE = { width: 2400, height: 1600 };
 
 function escapeHtml(value) {
@@ -285,6 +288,7 @@ function renderDashboardView() {
   pageTitle.textContent = currentGroup?.name || 'Group';
   breadcrumb.innerHTML = `
     <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
+    ${renderElementPicker()}
     <button class="primary-action" id="add-note" type="button">＋ Sticky note</button>`;
   if (topbarActions) {
     topbarActions.innerHTML = '<button class="secondary-action dashboard-settings-button" type="button">⚙ Dashboard settings</button>';
@@ -298,14 +302,28 @@ function renderDashboardView() {
   bindDashboardEvents();
 }
 
+function renderElementPicker() {
+  return `<details class="element-picker">
+    <summary class="primary-action element-picker-toggle" role="button">＋ Add elements</summary>
+    <div class="element-picker-panel" aria-label="Add dashboard elements">
+      <label class="element-search-label" for="element-search">Search elements</label>
+      <input class="element-search" id="element-search" type="search" placeholder="Search widgets and elements" autocomplete="off" />
+      <div class="element-tree" id="element-tree" role="tree">${renderElementTree()}</div>
+    </div>
+  </details>`;
+}
+
 function renderElementTree(searchTerm = '') {
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const visibleElements = ELEMENT_LIBRARY.filter((element) => {
+  const visibleElements = getElementLibrary().filter((element) => {
     const searchableText = `${element.title} ${element.category} ${element.type}`.toLowerCase();
     return !normalizedSearch || searchableText.includes(normalizedSearch);
   });
   if (!visibleElements.length) {
-    return '<p class="element-tree-empty">No elements match your search.</p>';
+    return `<div class="element-tree-empty">
+      <strong>No elements available yet.</strong>
+      <span>${normalizedSearch ? 'No widgets or elements match your search.' : 'Widgets and elements will appear here when they are ready.'}</span>
+    </div>`;
   }
 
   const categories = [...new Set(visibleElements.map((element) => element.category))].sort((left, right) => left.localeCompare(right));
@@ -325,7 +343,7 @@ function renderElementTree(searchTerm = '') {
 }
 
 function renderEmptyDashboard() {
-  return '<div class="empty-dashboard"><h3>Start building your dashboard</h3><p>Add a sticky note, then drag and stretch it into place.</p></div>';
+  return '<div class="empty-dashboard"><h3>Start building your dashboard</h3><p>Use Add elements to search widgets and elements when they are available.</p></div>';
 }
 
 function renderDashboardElement(element) {
@@ -688,11 +706,17 @@ function renderCustomerProfileSection(title, rows = [], formatter) {
 }
 
 function bindDashboardEvents() {
-  document.querySelector('#add-note').addEventListener('click', () => addDashboardElement('note'));
+  document.querySelector('#add-note')?.addEventListener('click', () => {
+    closeElementPicker();
+    addDashboardElement('note');
+  });
   document.querySelector('.dashboard-settings-button')?.addEventListener('click', openDashboardSettings);
   document.querySelector('#element-search')?.addEventListener('input', filterElementTree);
   document.querySelectorAll('[data-element-type]').forEach((button) => {
-    button.addEventListener('click', () => addDashboardElement(button.dataset.elementType));
+    button.addEventListener('click', () => {
+      closeElementPicker(button);
+      addDashboardElement(button.dataset.elementType);
+    });
   });
   document.querySelector('#dashboard-canvas')?.addEventListener('pointerdown', startDashboardPan);
   document.querySelectorAll('.dashboard-element').forEach((elementNode) => {
@@ -877,7 +901,21 @@ async function leaveCurrentGroup(dialog) {
 function filterElementTree(event) {
   document.querySelector('#element-tree').innerHTML = renderElementTree(event.target.value);
   document.querySelectorAll('[data-element-type]').forEach((button) => {
-    button.addEventListener('click', () => addDashboardElement(button.dataset.elementType));
+    button.addEventListener('click', () => {
+      closeElementPicker(button);
+      addDashboardElement(button.dataset.elementType);
+    });
+  });
+}
+
+function closeElementPicker(control) {
+  const picker = control?.closest('.element-picker');
+  if (picker) {
+    picker.open = false;
+    return;
+  }
+  document.querySelectorAll('.element-picker[open]').forEach((openPicker) => {
+    openPicker.open = false;
   });
 }
 
