@@ -10,8 +10,10 @@ let currentUser = null;
 let currentGroup = null;
 let userGroups = [];
 let dashboardElements = [];
+let dashboardSettings = { backgroundColor: '#ffffff' };
 let activeDrag = null;
 let activeResize = null;
+let activePan = null;
 let topZIndex = 20;
 
 const content = document.querySelector('#content');
@@ -24,8 +26,6 @@ const groupSwitcher = document.querySelector('#group-switcher');
 
 const ELEMENT_DEFAULTS = {
   note: { width: 280, height: 180, title: 'Sticky note', content: 'Type your note here…', category: 'Quick tools' },
-  calendar: { width: 520, height: 500, title: 'Calendar', category: 'Scheduling', view: 'month', color: '#102b63', appointments: [] },
-  customers: { width: 760, height: 560, title: 'Business customers', category: 'Customers', view: 'table', color: '#102b63' },
 };
 
 const ELEMENT_LIBRARY = Object.entries(ELEMENT_DEFAULTS).map(([type, defaults]) => ({
@@ -33,6 +33,7 @@ const ELEMENT_LIBRARY = Object.entries(ELEMENT_DEFAULTS).map(([type, defaults]) 
   title: defaults.title,
   category: defaults.category || 'Elements',
 }));
+const DASHBOARD_SURFACE_SIZE = { width: 2400, height: 1600 };
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -239,17 +240,30 @@ function dashboardStorageKey() {
   return `fo-crm-dashboard:${currentGroup?.id || 'solo'}`;
 }
 
+function dashboardSettingsStorageKey() {
+  return `fo-crm-dashboard-settings:${currentGroup?.id || 'solo'}`;
+}
+
 function loadDashboardData() {
   try {
-    dashboardElements = JSON.parse(localStorage.getItem(dashboardStorageKey()) || '[]');
+    dashboardElements = JSON.parse(localStorage.getItem(dashboardStorageKey()) || '[]').filter((element) => ELEMENT_DEFAULTS[element.type]);
   } catch {
     dashboardElements = [];
+  }
+  try {
+    dashboardSettings = { backgroundColor: '#ffffff', ...JSON.parse(localStorage.getItem(dashboardSettingsStorageKey()) || '{}') };
+  } catch {
+    dashboardSettings = { backgroundColor: '#ffffff' };
   }
   topZIndex = Math.max(20, ...dashboardElements.map((element) => Number(element.zIndex || 1)));
 }
 
 function saveDashboardData() {
   localStorage.setItem(dashboardStorageKey(), JSON.stringify(dashboardElements));
+}
+
+function saveDashboardSettings() {
+  localStorage.setItem(dashboardSettingsStorageKey(), JSON.stringify(dashboardSettings));
 }
 
 function renderDashboardView() {
@@ -267,21 +281,11 @@ function renderDashboardView() {
       <div class="toolbar-left">
         <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
         <button class="primary-action" id="add-note" type="button">＋ Sticky note</button>
-        <details class="element-picker">
-          <summary class="secondary-action element-picker-toggle">＋ Add element</summary>
-          <div class="element-picker-panel">
-            <label class="element-search-label" for="element-search">Search elements</label>
-            <input class="element-search" id="element-search" type="search" placeholder="Search all elements…" autocomplete="off" />
-            <div class="element-tree" id="element-tree" role="tree">
-              ${renderElementTree()}
-            </div>
-          </div>
-        </details>
       </div>
-      <p class="dashboard-hint">Drag by the top bar. Pull the bottom-right corner to resize.</p>
+      <button class="secondary-action dashboard-settings-button" type="button">⚙ Dashboard settings</button>
     </section>
     <section class="dashboard-canvas" id="dashboard-canvas" aria-label="Custom dashboard canvas">
-      ${dashboardElements.length ? dashboardElements.map(renderDashboardElement).join('') : renderEmptyDashboard()}
+      <div class="dashboard-surface" style="--dashboard-surface-width:${DASHBOARD_SURFACE_SIZE.width}px; --dashboard-surface-height:${DASHBOARD_SURFACE_SIZE.height}px; --dashboard-bg:${escapeHtml(dashboardSettings.backgroundColor || '#ffffff')};">${dashboardElements.length ? dashboardElements.map(renderDashboardElement).join('') : renderEmptyDashboard()}</div>
     </section>`;
   bindDashboardEvents();
 }
@@ -313,23 +317,19 @@ function renderElementTree(searchTerm = '') {
 }
 
 function renderEmptyDashboard() {
-  return '<div class="empty-dashboard"><h3>Start building your dashboard</h3><p>Add a note or calendar, then drag and stretch it into place.</p></div>';
+  return '<div class="empty-dashboard"><h3>Start building your dashboard</h3><p>Add a sticky note, then drag and stretch it into place.</p></div>';
 }
 
 function renderDashboardElement(element) {
-  if (element.type === 'calendar') getCalendarState(element);
-  if (element.type === 'customers') getCustomerState(element);
-  const calendarColor = element.type === 'calendar' && element.color ? ` --calendar-color:${escapeHtml(element.color)};` : '';
-  const style = `left:${element.x}px; top:${element.y}px; width:${element.width}px; height:${element.height}px; z-index:${element.zIndex || 1};${calendarColor}`;
+  const style = `left:${element.x}px; top:${element.y}px; width:${element.width}px; height:${element.height}px; z-index:${element.zIndex || 1};`;
   return `<article class="dashboard-element dashboard-element--${escapeHtml(element.type)}" style="${style}" data-element-id="${escapeHtml(element.id)}">
     <header class="element-header">
       <strong>${escapeHtml(element.title)}</strong>
       <div class="element-header-actions">
-        ${['calendar', 'customers'].includes(element.type) ? `<button class="element-settings" type="button" aria-label="${element.type === 'calendar' ? 'Calendar' : 'Customer'} settings">⚙</button>` : ''}
         <button class="element-delete" type="button" aria-label="Delete ${escapeHtml(element.title)}">×</button>
       </div>
     </header>
-    <div class="element-body">${element.type === 'calendar' ? renderCalendar(element) : element.type === 'customers' ? renderCustomersWidget(element) : renderNote(element)}</div>
+    <div class="element-body">${renderNote(element)}</div>
     <span class="resize-handle" aria-hidden="true"></span>
   </article>`;
 }
@@ -561,7 +561,6 @@ function renderCalendarEventList(events) {
 const CUSTOMER_TYPES = ['Individual','Household','Business','Commercial client','Property manager','Contractor','Subcontractor','Government organization','Nonprofit','Vendor','Referral partner','Custom customer type'];
 const CUSTOMER_STATUSES = ['Lead','Prospect','Active','Inactive','Past customer','On hold','Do not service','Collections','Archived'];
 const CUSTOMER_VIEWS = ['table','cards','compact','recent','favorites','map','saved'];
-const CUSTOMER_STAFF = ['Unassigned','Alex Rivera','Jordan Lee','Morgan Chen','Taylor Smith'];
 const CUSTOMER_PERMISSIONS = ['view','create','edit','archive','merge','export','billing','balances','privateNotes','addNotes','deleteNotes','documents','uploadDocuments','communications','logCalls','createTasks','alerts','customFields','bulkActions'];
 
 function customerStorageKey() { return `fo-crm-customers:${getCalendarBusinessId()}`; }
@@ -580,7 +579,6 @@ function getCustomerState(element) {
   element.search ||= '';
   element.filterType ||= '';
   element.filterStatus ||= '';
-  element.filterStaff ||= '';
   element.sortBy ||= 'customerName';
   element.filtersOpen ??= false;
   element.statusTab ||= 'All';
@@ -598,7 +596,6 @@ function getFilteredCustomers(element) {
     if (element.statusTab === 'Active' && customer.status !== 'Active') return false;
     if (element.statusTab === 'Archived' && customer.status !== 'Archived') return false;
     if (element.filterStatus && customer.status !== element.filterStatus) return false;
-    if (element.filterStaff && customer.assignedStaff !== element.filterStaff) return false;
     if (element.filterTag && !(customer.tags || []).some((tag) => tag.toLowerCase().includes(element.filterTag.toLowerCase()))) return false;
     if (element.view === 'recent' && !customer.recentlyViewedAt) return false;
     if (element.view === 'favorites' && !customer.favorite) return false;
@@ -628,7 +625,6 @@ function renderCustomerFilters(element) {
   const tagValue = element.filterTag || '';
   return `<div class="customer-filters">
     <label>Customer type<select class="customer-filter" data-filter="filterType">${renderOptions(CUSTOMER_TYPES, element.filterType, 'All types')}</select></label>
-    <label>Assigned staff<select class="customer-filter" data-filter="filterStaff">${renderOptions(CUSTOMER_STAFF.slice(1), element.filterStaff, 'All staff')}</select></label>
     <label>Tags<input class="customer-filter-text" data-filter="filterTag" value="${escapeHtml(tagValue)}" placeholder="Any tag" /></label>
     <label>Status<select class="customer-filter" data-filter="filterStatus">${renderOptions(CUSTOMER_STATUSES, element.filterStatus, 'All statuses')}</select></label>
     <label>Sort<select class="customer-sort"><option value="customerName" ${element.sortBy === 'customerName' ? 'selected' : ''}>Customer name</option><option value="businessName" ${element.sortBy === 'businessName' ? 'selected' : ''}>Company</option><option value="status" ${element.sortBy === 'status' ? 'selected' : ''}>Status</option><option value="createdAt" ${element.sortBy === 'createdAt' ? 'selected' : ''}>Created date</option><option value="outstandingBalance" ${element.sortBy === 'outstandingBalance' ? 'selected' : ''}>Outstanding balance</option></select></label>
@@ -685,10 +681,12 @@ function renderCustomerProfileSection(title, rows = [], formatter) {
 
 function bindDashboardEvents() {
   document.querySelector('#add-note').addEventListener('click', () => addDashboardElement('note'));
+  document.querySelector('.dashboard-settings-button')?.addEventListener('click', openDashboardSettings);
   document.querySelector('#element-search')?.addEventListener('input', filterElementTree);
   document.querySelectorAll('[data-element-type]').forEach((button) => {
     button.addEventListener('click', () => addDashboardElement(button.dataset.elementType));
   });
+  document.querySelector('#dashboard-canvas')?.addEventListener('pointerdown', startDashboardPan);
   document.querySelectorAll('.dashboard-element').forEach((elementNode) => {
     elementNode.addEventListener('pointerdown', bringElementForward);
     elementNode.querySelector('.element-header').addEventListener('pointerdown', startElementDrag);
@@ -770,7 +768,7 @@ function openCustomerForm(element, customer = {}) {
   dialog.innerHTML = `<form class="modal-card customer-form" method="dialog"><div class="modal-head"><h3>${heading}</h3><button type="button" data-close-modal>×</button></div><p class="helper">${intro} Customer records are saved only for ${escapeHtml(currentGroup?.name || 'this workspace')}.</p><div class="customer-form-grid customer-form-basic">
     <label>Customer type<select name="customerType" class="customer-type-select">${renderOptions(['Individual','Business'], customer.customerType || 'Individual')}</select></label><label>Status<select name="status">${renderOptions(CUSTOMER_STATUSES, customer.status || 'Lead')}</select></label><label class="business-name-field">Business name<input name="businessName" value="${escapeHtml(customer.businessName || '')}" /></label><label>First name<input name="firstName" value="${escapeHtml(customer.firstName || '')}" /></label><label>Last name<input name="lastName" value="${escapeHtml(customer.lastName || '')}" /></label><label>Primary phone<input name="primaryPhone" type="tel" value="${escapeHtml(customer.primaryPhone || '')}" /></label><label>Email<input name="email" type="email" value="${escapeHtml(customer.email || '')}" /></label><label class="span-2">Service address<input name="serviceAddress" value="${escapeHtml(customer.serviceAddress || '')}" /></label><label>Preferred contact<select name="preferredContact">${renderOptions(['Phone','Email','Text placeholder','Mail','Do not contact'], customer.preferredContact || 'Phone')}</select></label><input name="customerName" type="hidden" value="${escapeHtml(customer.customerName || '')}" /></div>
     <details class="customer-more-details" ${isNew ? '' : 'open'}><summary>Add more details</summary><div class="customer-form-grid">
-    <label>Secondary phone<input name="secondaryPhone" type="tel" value="${escapeHtml(customer.secondaryPhone || '')}" /></label><label>Billing address<input name="billingAddress" value="${escapeHtml(customer.billingAddress || '')}" /></label><label class="checkbox-line"><input name="billingSameAsService" type="checkbox" /> Billing address is the same as service address</label><label>Mailing address<input name="mailingAddress" value="${escapeHtml(customer.mailingAddress || '')}" /></label><label class="checkbox-line"><input name="mailingSameAsService" type="checkbox" /> Mailing address is the same as service address</label><label>Assigned staff<select name="assignedStaff">${renderOptions(CUSTOMER_STAFF.slice(1), customer.assignedStaff || '', 'Unassigned')}</select></label><label>Lead source<input name="leadSource" value="${escapeHtml(customer.leadSource || '')}" /></label><label>Payment terms<input name="paymentTerms" value="${escapeHtml(customer.paymentTerms || 'Due on receipt')}" /></label><label>Outstanding balance<input name="outstandingBalance" type="number" step="0.01" value="${escapeHtml(customer.outstandingBalance || 0)}" /></label><label>Tags<input name="tags" value="${escapeHtml((customer.tags || []).join(', '))}" /></label><label class="checkbox-line"><input name="taxExempt" type="checkbox" ${customer.taxExempt ? 'checked' : ''} /> Tax exempt</label><label class="checkbox-line"><input name="doNotContact" type="checkbox" ${customer.doNotContact ? 'checked' : ''} /> Do not contact</label><label class="checkbox-line"><input name="doNotService" type="checkbox" ${customer.doNotService ? 'checked' : ''} /> Do not service</label><label class="checkbox-line"><input name="favorite" type="checkbox" ${customer.favorite ? 'checked' : ''} /> Favorite</label><label class="span-2">Internal notes<textarea name="internalNotes">${escapeHtml(customer.internalNotes || '')}</textarea></label><label class="span-2">Customer notes<textarea name="customerNotes">${escapeHtml(customer.customerNotes || '')}</textarea></label><label class="span-2">Additional contacts, one per line<textarea name="contactsText" placeholder="Jane Smith | Scheduling | 555-0100 | jane@example.com">${escapeHtml((customer.contacts || []).map((c) => `${c.firstName || ''} ${c.lastName || ''} | ${c.role || ''} | ${c.phone || ''} | ${c.email || ''}`).join('\n'))}</textarea></label><label class="span-2">Service locations, one per line<textarea name="locationsText" placeholder="Main home | 123 Oak St | Austin | 78701">${escapeHtml((customer.locations || []).map((l) => `${l.name || ''} | ${l.address || ''} | ${l.city || ''} | ${l.zip || ''}`).join('\n'))}</textarea></label><label class="span-2">Custom fields, one per line<textarea name="customFieldsText" placeholder="Maintenance plan: Gold">${escapeHtml((customer.customFields || []).join('\n'))}</textarea></label></div></details><div class="duplicate-warning" hidden></div><p class="status-message"></p><div class="auth-actions wrap"><button class="primary-action" value="save" ${canEdit ? '' : 'disabled'}>${isNew ? 'Create customer' : 'Save customer'}</button>${customer.id ? '<button class="secondary-action" value="duplicate">Duplicate</button><button class="secondary-action" value="archive">Archive</button>' : ''}<button class="secondary-action" type="button" data-close-modal>Cancel</button></div></form>`;
+    <label>Secondary phone<input name="secondaryPhone" type="tel" value="${escapeHtml(customer.secondaryPhone || '')}" /></label><label>Billing address<input name="billingAddress" value="${escapeHtml(customer.billingAddress || '')}" /></label><label class="checkbox-line"><input name="billingSameAsService" type="checkbox" /> Billing address is the same as service address</label><label>Mailing address<input name="mailingAddress" value="${escapeHtml(customer.mailingAddress || '')}" /></label><label class="checkbox-line"><input name="mailingSameAsService" type="checkbox" /> Mailing address is the same as service address</label><label>Lead source<input name="leadSource" value="${escapeHtml(customer.leadSource || '')}" /></label><label>Payment terms<input name="paymentTerms" value="${escapeHtml(customer.paymentTerms || 'Due on receipt')}" /></label><label>Outstanding balance<input name="outstandingBalance" type="number" step="0.01" value="${escapeHtml(customer.outstandingBalance || 0)}" /></label><label>Tags<input name="tags" value="${escapeHtml((customer.tags || []).join(', '))}" /></label><label class="checkbox-line"><input name="taxExempt" type="checkbox" ${customer.taxExempt ? 'checked' : ''} /> Tax exempt</label><label class="checkbox-line"><input name="doNotContact" type="checkbox" ${customer.doNotContact ? 'checked' : ''} /> Do not contact</label><label class="checkbox-line"><input name="doNotService" type="checkbox" ${customer.doNotService ? 'checked' : ''} /> Do not service</label><label class="checkbox-line"><input name="favorite" type="checkbox" ${customer.favorite ? 'checked' : ''} /> Favorite</label><label class="span-2">Internal notes<textarea name="internalNotes">${escapeHtml(customer.internalNotes || '')}</textarea></label><label class="span-2">Customer notes<textarea name="customerNotes">${escapeHtml(customer.customerNotes || '')}</textarea></label><label class="span-2">Additional contacts, one per line<textarea name="contactsText" placeholder="Jane Smith | Scheduling | 555-0100 | jane@example.com">${escapeHtml((customer.contacts || []).map((c) => `${c.firstName || ''} ${c.lastName || ''} | ${c.role || ''} | ${c.phone || ''} | ${c.email || ''}`).join('\n'))}</textarea></label><label class="span-2">Service locations, one per line<textarea name="locationsText" placeholder="Main home | 123 Oak St | Austin | 78701">${escapeHtml((customer.locations || []).map((l) => `${l.name || ''} | ${l.address || ''} | ${l.city || ''} | ${l.zip || ''}`).join('\n'))}</textarea></label><label class="span-2">Custom fields, one per line<textarea name="customFieldsText" placeholder="Maintenance plan: Gold">${escapeHtml((customer.customFields || []).join('\n'))}</textarea></label></div></details><div class="duplicate-warning" hidden></div><p class="status-message"></p><div class="auth-actions wrap"><button class="primary-action" value="save" ${canEdit ? '' : 'disabled'}>${isNew ? 'Create customer' : 'Save customer'}</button>${customer.id ? '<button class="secondary-action" value="duplicate">Duplicate</button><button class="secondary-action" value="archive">Archive</button>' : ''}<button class="secondary-action" type="button" data-close-modal>Cancel</button></div></form>`;
   document.body.append(dialog);
   const form = dialog.querySelector('form');
   const warning = dialog.querySelector('.duplicate-warning');
@@ -786,7 +784,7 @@ function openCustomerForm(element, customer = {}) {
   showCustomerDuplicates(form, customer.id, warning);
   dialog.showModal();
 }
-function getCustomerFromForm(form, existing = {}) { const data = new FormData(form); const now = new Date().toISOString(); return { ...existing, id: existing.id || `customer-${Date.now()}`, businessId: getCalendarBusinessId(), customerNumber: existing.customerNumber || makeCustomerNumber(), customerType: data.get('customerType'), status: data.get('status'), customerName: (data.get('customerName') || `${data.get('firstName') || ''} ${data.get('lastName') || ''}`.trim() || data.get('businessName') || '').trim(), businessName: data.get('businessName'), firstName: data.get('firstName'), lastName: data.get('lastName'), primaryPhone: data.get('primaryPhone'), secondaryPhone: data.get('secondaryPhone'), email: data.get('email'), preferredContact: data.get('preferredContact'), billingAddress: data.get('billingSameAsService') === 'on' ? data.get('serviceAddress') : data.get('billingAddress'), serviceAddress: data.get('serviceAddress'), mailingAddress: data.get('mailingSameAsService') === 'on' ? data.get('serviceAddress') : data.get('mailingAddress'), assignedStaff: data.get('assignedStaff'), leadSource: data.get('leadSource'), paymentTerms: data.get('paymentTerms'), outstandingBalance: Number(data.get('outstandingBalance') || 0), tags: normalizeTags(data.get('tags')), taxExempt: data.get('taxExempt') === 'on', doNotContact: data.get('doNotContact') === 'on', doNotService: data.get('doNotService') === 'on', favorite: data.get('favorite') === 'on', internalNotes: data.get('internalNotes'), customerNotes: data.get('customerNotes'), contacts: parseLines(data.get('contactsText'), (line) => { const [name='', role='', phone='', email=''] = line.split('|').map((part) => part.trim()); const [firstName='', ...last] = name.split(' '); return { firstName, lastName: last.join(' '), role, phone, email, preferredContact: 'Phone' }; }), locations: parseLines(data.get('locationsText'), (line) => { const [name='', address='', city='', zip=''] = line.split('|').map((part) => part.trim()); return { name, address, city, zip, primaryService: true }; }), customFields: parseLines(data.get('customFieldsText'), (line) => line), notes: existing.notes || [], jobs: existing.jobs || [], appointments: existing.appointments || [], estimates: existing.estimates || [], invoices: existing.invoices || [], documents: existing.documents || [], communications: existing.communications || [], tasks: existing.tasks || [], alerts: existing.alerts || [], openJobs: existing.openJobs || 0, lastContactDate: existing.lastContactDate || '', nextAppointmentDate: existing.nextAppointmentDate || '', createdAt: existing.createdAt || now, updatedAt: now, createdBy: existing.createdBy || currentUser?.id || 'local-user', updatedBy: currentUser?.id || 'local-user', activity: [...(existing.activity || []), { at: now, action: existing.id ? 'Customer updated' : 'Customer created', by: currentUser?.id || 'local-user' }] }; }
+function getCustomerFromForm(form, existing = {}) { const data = new FormData(form); const now = new Date().toISOString(); return { ...existing, id: existing.id || `customer-${Date.now()}`, businessId: getCalendarBusinessId(), customerNumber: existing.customerNumber || makeCustomerNumber(), customerType: data.get('customerType'), status: data.get('status'), customerName: (data.get('customerName') || `${data.get('firstName') || ''} ${data.get('lastName') || ''}`.trim() || data.get('businessName') || '').trim(), businessName: data.get('businessName'), firstName: data.get('firstName'), lastName: data.get('lastName'), primaryPhone: data.get('primaryPhone'), secondaryPhone: data.get('secondaryPhone'), email: data.get('email'), preferredContact: data.get('preferredContact'), billingAddress: data.get('billingSameAsService') === 'on' ? data.get('serviceAddress') : data.get('billingAddress'), serviceAddress: data.get('serviceAddress'), mailingAddress: data.get('mailingSameAsService') === 'on' ? data.get('serviceAddress') : data.get('mailingAddress'), assignedStaff: existing.assignedStaff || '', leadSource: data.get('leadSource'), paymentTerms: data.get('paymentTerms'), outstandingBalance: Number(data.get('outstandingBalance') || 0), tags: normalizeTags(data.get('tags')), taxExempt: data.get('taxExempt') === 'on', doNotContact: data.get('doNotContact') === 'on', doNotService: data.get('doNotService') === 'on', favorite: data.get('favorite') === 'on', internalNotes: data.get('internalNotes'), customerNotes: data.get('customerNotes'), contacts: parseLines(data.get('contactsText'), (line) => { const [name='', role='', phone='', email=''] = line.split('|').map((part) => part.trim()); const [firstName='', ...last] = name.split(' '); return { firstName, lastName: last.join(' '), role, phone, email, preferredContact: 'Phone' }; }), locations: parseLines(data.get('locationsText'), (line) => { const [name='', address='', city='', zip=''] = line.split('|').map((part) => part.trim()); return { name, address, city, zip, primaryService: true }; }), customFields: parseLines(data.get('customFieldsText'), (line) => line), notes: existing.notes || [], jobs: existing.jobs || [], appointments: existing.appointments || [], estimates: existing.estimates || [], invoices: existing.invoices || [], documents: existing.documents || [], communications: existing.communications || [], tasks: existing.tasks || [], alerts: existing.alerts || [], openJobs: existing.openJobs || 0, lastContactDate: existing.lastContactDate || '', nextAppointmentDate: existing.nextAppointmentDate || '', createdAt: existing.createdAt || now, updatedAt: now, createdBy: existing.createdBy || currentUser?.id || 'local-user', updatedBy: currentUser?.id || 'local-user', activity: [...(existing.activity || []), { at: now, action: existing.id ? 'Customer updated' : 'Customer created', by: currentUser?.id || 'local-user' }] }; }
 function showCustomerDuplicates(form, customerId, warning) { const draft = getCustomerFromForm(form, { id: customerId || 'draft' }); const dupes = loadCustomers().filter((c) => c.id !== customerId && [draft.customerName && c.customerName === draft.customerName, draft.businessName && c.businessName === draft.businessName, draft.primaryPhone && c.primaryPhone === draft.primaryPhone, draft.email && c.email === draft.email, draft.serviceAddress && c.serviceAddress === draft.serviceAddress].some(Boolean)); warning.hidden = !dupes.length; warning.textContent = dupes.length ? `Possible duplicate: ${dupes.map(customerDisplayName).join(', ')}. Review before saving or continue if authorized.` : ''; }
 function saveCustomerForm(event, element, existing, dialog) {
   event.preventDefault();
@@ -822,8 +820,51 @@ function quickCustomerCall(event) { mutateCustomer(event.currentTarget.dataset.l
 function quickCustomerTask(event) { mutateCustomer(event.currentTarget.dataset.addTask, (customer) => { const title = window.prompt('Follow-up task'); if (title) customer.tasks = [{ id: `task-${Date.now()}`, title, status: 'Open', priority: 'Normal', dueDate: formatDateInput(new Date()), customerId: customer.id }, ...(customer.tasks || [])]; }); }
 function archiveCustomer(event) { if (!window.confirm('Archive this customer?')) return; mutateCustomer(event.currentTarget.dataset.archiveCustomer, (customer) => { customer.status = 'Archived'; }); }
 function mutateCustomer(id, updater) { const customers = loadCustomers(); const customer = customers.find((item) => item.id === id); if (!customer) return; updater(customer); customer.updatedAt = new Date().toISOString(); customer.activity = [...(customer.activity || []), { at: customer.updatedAt, action: 'Customer activity updated', by: currentUser?.id || 'local-user' }]; saveCustomers(customers); renderDashboardView(); }
-function exportCustomersCsv(event) { const element = getCustomerElement(event.currentTarget); const rows = getFilteredCustomers(element); const csv = ['Customer name,Company,Phone,Email,Type,Status,Address,Assigned,Balance', ...rows.map((c) => [customerDisplayName(c), c.businessName, c.primaryPhone, c.email, c.customerType, c.status, c.serviceAddress, c.assignedStaff, c.outstandingBalance].map((v) => `"${String(v || '').replaceAll('"', '""')}"`).join(','))].join('\n'); const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'customers.csv'; link.click(); URL.revokeObjectURL(url); }
-function saveCustomerView(event) { const element = getCustomerElement(event.currentTarget); const name = window.prompt('Saved view name'); if (!name) return; const key = `fo-crm-customer-saved-views:${getCalendarBusinessId()}`; const saved = JSON.parse(localStorage.getItem(key) || '[]'); saved.push({ name, view: element.view, filters: { type: element.filterType, status: element.filterStatus, staff: element.filterStaff }, sortBy: element.sortBy, createdAt: new Date().toISOString() }); localStorage.setItem(key, JSON.stringify(saved)); }
+function exportCustomersCsv(event) { const element = getCustomerElement(event.currentTarget); const rows = getFilteredCustomers(element); const csv = ['Customer name,Company,Phone,Email,Type,Status,Address,Balance', ...rows.map((c) => [customerDisplayName(c), c.businessName, c.primaryPhone, c.email, c.customerType, c.status, c.serviceAddress, c.outstandingBalance].map((v) => `"${String(v || '').replaceAll('"', '""')}"`).join(','))].join('\n'); const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'customers.csv'; link.click(); URL.revokeObjectURL(url); }
+function saveCustomerView(event) { const element = getCustomerElement(event.currentTarget); const name = window.prompt('Saved view name'); if (!name) return; const key = `fo-crm-customer-saved-views:${getCalendarBusinessId()}`; const saved = JSON.parse(localStorage.getItem(key) || '[]'); saved.push({ name, view: element.view, filters: { type: element.filterType, status: element.filterStatus }, sortBy: element.sortBy, createdAt: new Date().toISOString() }); localStorage.setItem(key, JSON.stringify(saved)); }
+
+
+function openDashboardSettings() {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'modal dashboard-settings-modal';
+  dialog.innerHTML = `<form class="modal-card dashboard-settings-form" method="dialog">
+    <div class="modal-head"><h3>Dashboard settings</h3><button type="button" data-close-modal>×</button></div>
+    <label>Background color<input name="backgroundColor" type="color" value="${escapeHtml(dashboardSettings.backgroundColor || '#ffffff')}" /></label>
+    <p class="helper">These settings apply to ${escapeHtml(currentGroup?.name || 'this dashboard')}.</p>
+    <p class="status-message"></p>
+    <div class="auth-actions wrap"><button class="primary-action" value="save">Save settings</button><button class="secondary-action danger" type="button" data-leave-group ${currentUser && currentGroup ? '' : 'disabled'}>Leave group</button><button class="secondary-action" type="button" data-close-modal>Cancel</button></div>
+  </form>`;
+  document.body.append(dialog);
+  const form = dialog.querySelector('form');
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    dashboardSettings.backgroundColor = new FormData(form).get('backgroundColor') || '#ffffff';
+    saveDashboardSettings();
+    dialog.close();
+    renderDashboardView();
+  });
+  dialog.querySelector('[data-leave-group]')?.addEventListener('click', () => leaveCurrentGroup(dialog));
+  dialog.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+  dialog.addEventListener('close', () => dialog.remove());
+  dialog.showModal();
+}
+
+async function leaveCurrentGroup(dialog) {
+  if (!currentUser || !currentGroup || !window.confirm(`Leave ${currentGroup.name}?`)) return;
+  try {
+    const { error } = await requireSupabase()
+      .from('group_members')
+      .delete()
+      .eq('group_id', currentGroup.id)
+      .eq('user_id', currentUser.id);
+    if (error) throw error;
+    const leftGroupId = currentGroup.id;
+    dialog.close();
+    await loadUserGroup(userGroups.find((group) => group.id !== leftGroupId)?.id);
+  } catch (error) {
+    showMessage(error.message, 'error', dialog);
+  }
+}
 
 function filterElementTree(event) {
   document.querySelector('#element-tree').innerHTML = renderElementTree(event.target.value);
@@ -834,14 +875,17 @@ function filterElementTree(event) {
 
 function addDashboardElement(type) {
   const defaults = ELEMENT_DEFAULTS[type];
+  if (!defaults) return;
   const now = new Date();
+  const canvas = document.querySelector('#dashboard-canvas');
+  const offset = dashboardElements.length % 3;
   dashboardElements.push({
     id: `${type}-${Date.now()}`,
     type,
     title: defaults.title,
     content: defaults.content || '',
-    x: 36 + (dashboardElements.length % 3) * 34,
-    y: 34 + (dashboardElements.length % 3) * 30,
+    x: Math.min(DASHBOARD_SURFACE_SIZE.width - defaults.width, (canvas?.scrollLeft || 0) + 36 + offset * 34),
+    y: Math.min(DASHBOARD_SURFACE_SIZE.height - defaults.height, (canvas?.scrollTop || 0) + 34 + offset * 30),
     width: defaults.width,
     height: defaults.height,
     month: now.getMonth(),
@@ -855,6 +899,33 @@ function addDashboardElement(type) {
   });
   saveDashboardData();
   renderDashboardView();
+}
+
+
+function startDashboardPan(event) {
+  if (event.button !== 0 || event.target.closest('.dashboard-element')) return;
+  event.preventDefault();
+  const canvas = event.currentTarget;
+  activePan = { canvas, startX: event.clientX, startY: event.clientY, scrollLeft: canvas.scrollLeft, scrollTop: canvas.scrollTop };
+  canvas.classList.add('is-panning');
+  canvas.setPointerCapture(event.pointerId);
+  canvas.addEventListener('pointermove', panDashboard);
+  canvas.addEventListener('pointerup', stopDashboardPan, { once: true });
+  canvas.addEventListener('pointercancel', stopDashboardPan, { once: true });
+}
+
+function panDashboard(event) {
+  if (!activePan) return;
+  activePan.canvas.scrollLeft = activePan.scrollLeft - (event.clientX - activePan.startX);
+  activePan.canvas.scrollTop = activePan.scrollTop - (event.clientY - activePan.startY);
+}
+
+function stopDashboardPan(event) {
+  if (!activePan) return;
+  activePan.canvas.releasePointerCapture(event.pointerId);
+  activePan.canvas.removeEventListener('pointermove', panDashboard);
+  activePan.canvas.classList.remove('is-panning');
+  activePan = null;
 }
 
 function findElement(id) {
@@ -874,7 +945,7 @@ function startElementDrag(event) {
   const node = event.currentTarget.closest('.dashboard-element');
   const element = findElement(node.dataset.elementId);
   if (!element) return;
-  activeDrag = { element, node, startX: event.clientX, startY: event.clientY, initialX: element.x, initialY: element.y };
+  activeDrag = { element, node, startX: event.clientX, startY: event.clientY, initialX: element.x, initialY: element.y, maxX: DASHBOARD_SURFACE_SIZE.width - element.width, maxY: DASHBOARD_SURFACE_SIZE.height - element.height };
   node.setPointerCapture(event.pointerId);
   node.addEventListener('pointermove', dragElement);
   node.addEventListener('pointerup', stopElementDrag, { once: true });
@@ -882,8 +953,8 @@ function startElementDrag(event) {
 
 function dragElement(event) {
   if (!activeDrag) return;
-  activeDrag.element.x = Math.max(0, activeDrag.initialX + event.clientX - activeDrag.startX);
-  activeDrag.element.y = Math.max(0, activeDrag.initialY + event.clientY - activeDrag.startY);
+  activeDrag.element.x = Math.min(activeDrag.maxX, Math.max(0, activeDrag.initialX + event.clientX - activeDrag.startX));
+  activeDrag.element.y = Math.min(activeDrag.maxY, Math.max(0, activeDrag.initialY + event.clientY - activeDrag.startY));
   activeDrag.node.style.left = `${activeDrag.element.x}px`;
   activeDrag.node.style.top = `${activeDrag.element.y}px`;
 }
@@ -909,8 +980,8 @@ function startElementResize(event) {
 
 function resizeElement(event) {
   if (!activeResize) return;
-  activeResize.element.width = Math.max(220, activeResize.initialWidth + event.clientX - activeResize.startX);
-  activeResize.element.height = Math.max(150, activeResize.initialHeight + event.clientY - activeResize.startY);
+  activeResize.element.width = Math.min(DASHBOARD_SURFACE_SIZE.width - activeResize.element.x, Math.max(220, activeResize.initialWidth + event.clientX - activeResize.startX));
+  activeResize.element.height = Math.min(DASHBOARD_SURFACE_SIZE.height - activeResize.element.y, Math.max(150, activeResize.initialHeight + event.clientY - activeResize.startY));
   activeResize.node.style.width = `${activeResize.element.width}px`;
   activeResize.node.style.height = `${activeResize.element.height}px`;
 }
