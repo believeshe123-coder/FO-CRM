@@ -745,7 +745,26 @@ function openCustomerForm(element, customer = {}) {
 }
 function getCustomerFromForm(form, existing = {}) { const data = new FormData(form); const now = new Date().toISOString(); return { ...existing, id: existing.id || `customer-${Date.now()}`, businessId: getCalendarBusinessId(), customerNumber: existing.customerNumber || makeCustomerNumber(), customerType: data.get('customerType'), status: data.get('status'), customerName: data.get('customerName').trim(), businessName: data.get('businessName'), firstName: data.get('firstName'), lastName: data.get('lastName'), primaryPhone: data.get('primaryPhone'), secondaryPhone: data.get('secondaryPhone'), email: data.get('email'), preferredContact: data.get('preferredContact'), billingAddress: data.get('billingAddress'), serviceAddress: data.get('serviceAddress'), mailingAddress: data.get('mailingAddress'), assignedStaff: data.get('assignedStaff'), leadSource: data.get('leadSource'), paymentTerms: data.get('paymentTerms'), outstandingBalance: Number(data.get('outstandingBalance') || 0), tags: normalizeTags(data.get('tags')), taxExempt: data.get('taxExempt') === 'on', doNotContact: data.get('doNotContact') === 'on', doNotService: data.get('doNotService') === 'on', favorite: data.get('favorite') === 'on', internalNotes: data.get('internalNotes'), customerNotes: data.get('customerNotes'), contacts: parseLines(data.get('contactsText'), (line) => { const [name='', role='', phone='', email=''] = line.split('|').map((part) => part.trim()); const [firstName='', ...last] = name.split(' '); return { firstName, lastName: last.join(' '), role, phone, email, preferredContact: 'Phone' }; }), locations: parseLines(data.get('locationsText'), (line) => { const [name='', address='', city='', zip=''] = line.split('|').map((part) => part.trim()); return { name, address, city, zip, primaryService: true }; }), customFields: parseLines(data.get('customFieldsText'), (line) => line), notes: existing.notes || [], jobs: existing.jobs || [], appointments: existing.appointments || [], estimates: existing.estimates || [], invoices: existing.invoices || [], documents: existing.documents || [], communications: existing.communications || [], tasks: existing.tasks || [], alerts: existing.alerts || [], openJobs: existing.openJobs || 0, lastContactDate: existing.lastContactDate || '', nextAppointmentDate: existing.nextAppointmentDate || '', createdAt: existing.createdAt || now, updatedAt: now, createdBy: existing.createdBy || currentUser?.id || 'local-user', updatedBy: currentUser?.id || 'local-user', activity: [...(existing.activity || []), { at: now, action: existing.id ? 'Customer updated' : 'Customer created', by: currentUser?.id || 'local-user' }] }; }
 function showCustomerDuplicates(form, customerId, warning) { const draft = getCustomerFromForm(form, { id: customerId || 'draft' }); const dupes = loadCustomers().filter((c) => c.id !== customerId && [draft.customerName && c.customerName === draft.customerName, draft.businessName && c.businessName === draft.businessName, draft.primaryPhone && c.primaryPhone === draft.primaryPhone, draft.email && c.email === draft.email, draft.serviceAddress && c.serviceAddress === draft.serviceAddress].some(Boolean)); warning.hidden = !dupes.length; warning.textContent = dupes.length ? `Possible duplicate: ${dupes.map(customerDisplayName).join(', ')}. Review before saving or continue if authorized.` : ''; }
-function saveCustomerForm(event, element, existing, dialog) { event.preventDefault(); const action = event.submitter?.value || 'save'; let customers = loadCustomers(); if (action === 'archive') { if (!hasCustomerPermission('archive') || !window.confirm('Archive this customer?')) return; customers = customers.map((c) => c.id === existing.id ? { ...c, status: 'Archived', activity: [...(c.activity || []), { at: new Date().toISOString(), action: 'Customer archived', by: currentUser?.id || 'local-user' }] } : c); } else { const next = getCustomerFromForm(event.currentTarget, action === 'duplicate' ? {} : existing); customers = customers.filter((c) => c.id !== next.id); customers.push(action === 'duplicate' ? { ...next, id: `customer-${Date.now()}`, customerNumber: makeCustomerNumber(), customerName: `${next.customerName} copy` } : next); element.selectedCustomerId = next.id; } saveCustomers(customers); saveDashboardData(); dialog.close(); renderDashboardView(); }
+function saveCustomerForm(event, element, existing, dialog) {
+  event.preventDefault();
+  const action = event.submitter?.value || 'save';
+  let customers = loadCustomers();
+  if (action === 'archive') {
+    if (!hasCustomerPermission('archive') || !window.confirm('Archive this customer?')) return;
+    customers = customers.map((c) => c.id === existing.id ? { ...c, status: 'Archived', activity: [...(c.activity || []), { at: new Date().toISOString(), action: 'Customer archived', by: currentUser?.id || 'local-user' }] } : c);
+    element.selectedCustomerId = existing.id;
+  } else {
+    const next = getCustomerFromForm(event.currentTarget, action === 'duplicate' ? {} : existing);
+    const savedCustomer = action === 'duplicate' ? { ...next, customerName: `${next.customerName} copy` } : next;
+    customers = customers.filter((c) => c.id !== savedCustomer.id);
+    customers.push(savedCustomer);
+    element.selectedCustomerId = savedCustomer.id;
+  }
+  saveCustomers(customers);
+  saveDashboardData();
+  dialog.close();
+  renderDashboardView();
+}
 function quickCustomerNote(event) { mutateCustomer(event.currentTarget.dataset.addNote, (customer) => { const content = window.prompt('Note'); if (content) customer.notes = [{ type: 'General', content, createdAt: new Date().toISOString(), privacy: 'internal' }, ...(customer.notes || [])]; }); }
 function quickCustomerCall(event) { mutateCustomer(event.currentTarget.dataset.logCall, (customer) => { const summary = window.prompt('Call summary'); if (summary) customer.communications = [{ type: 'Phone call', direction: 'Logged', summary, at: new Date().toISOString(), followUpRequired: false }, ...(customer.communications || [])]; customer.lastContactDate = formatDateInput(new Date()); }); }
 function quickCustomerTask(event) { mutateCustomer(event.currentTarget.dataset.addTask, (customer) => { const title = window.prompt('Follow-up task'); if (title) customer.tasks = [{ id: `task-${Date.now()}`, title, status: 'Open', priority: 'Normal', dueDate: formatDateInput(new Date()), customerId: customer.id }, ...(customer.tasks || [])]; }); }
@@ -874,9 +893,13 @@ function moveCalendar(button, delta) {
   if (!element) return;
   getCalendarState(element);
   const currentDate = new Date(`${element.selectedDate}T00:00:00`);
-  if (element.view === 'day') currentDate.setDate(currentDate.getDate() + delta);
-  else if (element.view === 'week') currentDate.setDate(currentDate.getDate() + (delta * 7));
-  else currentDate.setMonth(element.month + delta, 1);
+  if (element.view === 'day' || element.view === 'today') {
+    currentDate.setDate(currentDate.getDate() + delta);
+  } else if (element.view === 'week' || element.view === 'work-week') {
+    currentDate.setDate(currentDate.getDate() + (delta * 7));
+  } else {
+    currentDate.setMonth(element.month + delta, 1);
+  }
   setCalendarFocus(element, currentDate);
   saveDashboardData();
   renderDashboardView();
@@ -1120,7 +1143,19 @@ function dropCalendarEvent(event) {
   if (!hasCalendarPermission('edit')) return;
   const id = event.dataTransfer.getData('text/calendar-event-id');
   const date = event.currentTarget.dataset.dropDate;
-  const events = loadCalendarEvents().map((item) => item.id === id ? { ...item, startDate: date, endDate: date, updatedAt: new Date().toISOString(), activity: [...(item.activity || []), { at: new Date().toISOString(), by: currentUser?.id || 'local-user', action: 'Date changed by drag-and-drop' }] } : item);
+  const events = loadCalendarEvents().map((item) => {
+    if (item.id !== id) return item;
+    const originalStart = new Date(`${item.startDate}T00:00:00`);
+    const originalEnd = new Date(`${item.endDate || item.startDate}T00:00:00`);
+    const durationDays = Math.max(0, Math.round((originalEnd - originalStart) / 86400000));
+    return {
+      ...item,
+      startDate: date,
+      endDate: formatDateInput(addDays(new Date(`${date}T00:00:00`), durationDays)),
+      updatedAt: new Date().toISOString(),
+      activity: [...(item.activity || []), { at: new Date().toISOString(), by: currentUser?.id || 'local-user', action: 'Date changed by drag-and-drop' }],
+    };
+  });
   saveCalendarEvents(events);
   renderDashboardView();
 }
