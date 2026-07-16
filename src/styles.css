@@ -33,7 +33,7 @@ button { cursor: pointer; }
 .nav-pill.active::before { background: var(--accent); }
 
 .workspace { min-height: 0; overflow: hidden; background: var(--cream); min-width: 0; }
-.topbar { min-height: 76px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 34px; background: rgba(251, 250, 246, .92); backdrop-filter: blur(10px); }
+.topbar { position: relative; z-index: 100; overflow: visible; min-height: 76px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 34px; background: rgba(251, 250, 246, .92); backdrop-filter: blur(10px); }
 .topbar-title { min-width: 0; }
 .topbar h2 { margin: 6px 0 0; font-size: 26px; letter-spacing: -.04em; }
 .topbar-actions { display: flex; align-items: center; justify-content: flex-end; flex: 0 0 auto; }
@@ -164,7 +164,7 @@ button { cursor: pointer; }
 .element-tree-empty strong { color: var(--accent); font-size: 14px; }
 .element-tree-empty span { background: transparent; padding: 0; border-radius: 0; color: var(--muted); font-size: 13px; font-weight: 800; }
 
-.dashboard-canvas { position: relative; height: calc(100dvh - 126px); min-height: 0; margin: 18px 34px 22px; border: 1px dashed color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 24px; background: #fff; overflow: auto; box-shadow: inset 0 0 0 8px rgba(244, 239, 229, .65); cursor: grab; touch-action: none; }
+.dashboard-canvas { position: relative; z-index: 0; height: calc(100dvh - 126px); min-height: 0; margin: 18px 34px 22px; border: 1px dashed color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 24px; background: #fff; overflow: auto; box-shadow: inset 0 0 0 8px rgba(244, 239, 229, .65); cursor: grab; touch-action: none; }
 .dashboard-canvas.is-panning { cursor: grabbing; }
 .dashboard-surface { position: relative; width: var(--dashboard-surface-width, 2400px); height: var(--dashboard-surface-height, 1600px); min-width: 100%; min-height: 100%; background: linear-gradient(90deg, rgba(16,43,99,.04) 1px, transparent 1px), linear-gradient(rgba(16,43,99,.04) 1px, transparent 1px), var(--dashboard-bg, #fff); background-size: 24px 24px; }
 .empty-dashboard { min-height: 360px; display: grid; place-content: center; text-align: center; color: var(--muted); padding: 34px; }
@@ -359,3 +359,20 @@ button { cursor: pointer; }
 .calendar-settings-view h4 { margin: 0; color: var(--calendar-color); font-size: 18px; letter-spacing: -.03em; }
 .calendar-settings-view .helper { margin-top: 4px; }
 .calendar-settings-close { align-self: end; background: var(--calendar-color); border-color: var(--calendar-color); color: #fff; }
+.customer-simple { height: 100%; display: grid; align-content: start; gap: 12px; padding: 16px; background: #fff; overflow: auto; }
+.customer-simple h3, .customer-simple p { margin: 0; }
+.customer-simple h3, .customer-simple header strong { color: var(--accent); font-size: 20px; letter-spacing: -.03em; }
+.customer-simple p { color: var(--muted); line-height: 1.5; font-weight: 700; }
+.customer-simple header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.customer-simple dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 12px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fbfaf6; }
+.customer-simple dt { color: var(--muted); font-size: 12px; font-weight: 900; }
+.customer-simple dd { margin: 0; min-height: 18px; color: var(--ink); font-weight: 800; overflow-wrap: anywhere; }
+.customer-simple-list { display: grid; gap: 8px; min-height: 0; overflow: auto; }
+.customer-simple-notes { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.customer-simple--add { place-content: center; text-align: center; }
+.customer-page-controls { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.customer-page-controls label, .customer-page-form label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 900; }
+.customer-page-controls select, .customer-page-form input, .customer-page-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; background: #fff; color: var(--ink); font: inherit; font-weight: 800; }
+.customer-page-form { align-content: start; }
+.customer-page-form textarea { min-height: 74px; resize: vertical; }
+.customer-page-save { margin-top: auto; }

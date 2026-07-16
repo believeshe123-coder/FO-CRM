@@ -28,9 +28,16 @@ const topbarActions = document.querySelector('#topbar-actions');
 
 const ELEMENT_DEFAULTS = {
   note: { width: 280, height: 180, title: 'Sticky note', content: 'Type your note here…', category: 'Quick tools' },
+  addBusinessCustomer: { width: 320, height: 190, title: 'Add business customer', category: 'Customers' },
+  customerPage: { width: 560, height: 520, title: 'Customer page', category: 'Customers' },
+  customerList: { width: 420, height: 480, title: 'Customer list', category: 'Customers' },
 };
 
-const ELEMENT_LIBRARY = [];
+const ELEMENT_LIBRARY = [
+  { type: 'addBusinessCustomer', title: 'Add business customer', category: 'Customers' },
+  { type: 'customerPage', title: 'Customer page', category: 'Customers' },
+  { type: 'customerList', title: 'Customer list', category: 'Customers' },
+];
 
 function getElementLibrary() {
   return ELEMENT_LIBRARY.map((element) => ({
@@ -334,7 +341,7 @@ function renderElementTree(searchTerm = '') {
       <div class="element-tree-items" role="group">
         ${categoryElements.map((element) => `
           <button class="element-tree-item" type="button" role="treeitem" data-element-type="${escapeHtml(element.type)}">
-            <span>${element.type === 'calendar' ? '▣' : element.type === 'customers' ? '◫' : '▪'}</span>
+            <span>${element.category === 'Customers' ? '◫' : element.type === 'calendar' ? '▣' : '▪'}</span>
             ${escapeHtml(element.title)}
           </button>`).join('')}
       </div>
@@ -355,9 +362,17 @@ function renderDashboardElement(element) {
         <button class="element-delete" type="button" aria-label="Delete ${escapeHtml(element.title)}">×</button>
       </div>
     </header>
-    <div class="element-body">${renderNote(element)}</div>
+    <div class="element-body">${renderElementBody(element)}</div>
     <span class="resize-handle" aria-hidden="true"></span>
   </article>`;
+}
+
+function renderElementBody(element) {
+  if (element.type === 'note') return renderNote(element);
+  if (element.type === 'addBusinessCustomer') return renderAddBusinessCustomerElement();
+  if (element.type === 'customerPage') return renderCustomerPageElement(element);
+  if (element.type === 'customerList') return renderCustomerListElement(element);
+  return '<p class="calendar-empty">Element unavailable.</p>';
 }
 
 function renderNote(element) {
@@ -705,6 +720,56 @@ function renderCustomerProfileSection(title, rows = [], formatter) {
   return `<section class="customer-profile-section"><h4>${escapeHtml(title)}</h4>${rows.length ? `<ul>${rows.map((item) => `<li>${escapeHtml(formatter(item))}</li>`).join('')}</ul>` : '<p class="calendar-empty">None recorded.</p>'}</section>`;
 }
 
+function renderAddBusinessCustomerElement() {
+  return `<section class="customer-simple customer-simple--add">
+    <h3>Add a business customer</h3>
+    <p>Create a blank customer page for ${escapeHtml(currentGroup?.name || 'this business')}. Add at least a business or customer name to save it.</p>
+    <button class="customer-new primary-action" type="button" data-customer-type="Business">+ Add business customer</button>
+  </section>`;
+}
+
+function renderCustomerPageElement(element) {
+  const customers = loadCustomers();
+  const customer = customers.find((item) => item.id === element.selectedCustomerId) || customers[0];
+  const controls = `<div class="customer-page-controls">
+    <label>Viewing<select class="customer-page-select" ${customers.length ? '' : 'disabled'}>
+      ${customers.length ? customers.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === customer?.id ? 'selected' : ''}>${escapeHtml(customerDisplayName(item))}</option>`).join('') : '<option>No saved customers</option>'}
+    </select></label>
+    <button class="customer-page-new secondary-action" type="button">+ Add customer</button>
+  </div>`;
+  if (element.isAddingCustomer || !customer) {
+    return `<form class="customer-simple customer-simple--page customer-page-form">
+      ${controls}
+      <h3>New customer page</h3>
+      <p>Add at least a business or customer name, then save the customer.</p>
+      <label>Business name<input name="businessName" /></label>
+      <label>First name<input name="firstName" /></label>
+      <label>Last name<input name="lastName" /></label>
+      <label>Phone<input name="primaryPhone" type="tel" /></label>
+      <label>Email<input name="email" type="email" /></label>
+      <label>Service address<input name="serviceAddress" /></label>
+      <label>Notes<textarea name="customerNotes"></textarea></label>
+      <p class="status-message"></p>
+      <button class="primary-action customer-page-save" type="submit">Save customer</button>
+    </form>`;
+  }
+  const displayName = customerDisplayName(customer);
+  return `<section class="customer-simple customer-simple--page">
+    ${controls}
+    <header><strong>${escapeHtml(displayName)}</strong><button class="customer-edit secondary-action" type="button" data-edit-customer="${escapeHtml(customer.id)}">Edit</button></header>
+    <dl><dt>Business name</dt><dd>${escapeHtml(customer.businessName || '')}</dd><dt>Contact</dt><dd>${escapeHtml(`${customer.firstName || ''} ${customer.lastName || ''}`.trim())}</dd><dt>Phone</dt><dd>${escapeHtml(customer.primaryPhone || '')}</dd><dt>Email</dt><dd>${escapeHtml(customer.email || '')}</dd><dt>Status</dt><dd>${escapeHtml(customer.status || '')}</dd><dt>Address</dt><dd>${escapeHtml(customer.serviceAddress || '')}</dd></dl>
+    <p class="customer-simple-notes">${escapeHtml(customer.customerNotes || customer.internalNotes || 'No notes yet.')}</p>
+  </section>`;
+}
+
+function renderCustomerListElement(element) {
+  const customers = loadCustomers();
+  return `<section class="customer-simple customer-simple--list">
+    <header><strong>Customers</strong><button class="customer-new secondary-action" type="button" data-customer-type="Business">+ Add</button></header>
+    ${customers.length ? `<div class="customer-simple-list">${customers.map((customer) => `<button class="customer-row ${customer.id === element.selectedCustomerId ? 'active' : ''}" type="button" data-customer-id="${escapeHtml(customer.id)}"><span><b>${escapeHtml(customerDisplayName(customer))}</b><small>${escapeHtml(customer.businessName || customer.customerNumber || '')}</small></span><em>${escapeHtml(customer.status || 'Lead')}</em></button>`).join('')}</div>` : '<p class="calendar-empty">No customers saved yet.</p>'}
+  </section>`;
+}
+
 function bindDashboardEvents() {
   document.querySelector('#add-note')?.addEventListener('click', () => {
     closeElementPicker();
@@ -748,6 +813,9 @@ function bindDashboardEvents() {
   document.querySelectorAll('[data-resize-event]').forEach((node) => node.addEventListener('click', resizeCalendarEvent));
   document.querySelectorAll('.customer-search').forEach((input) => input.addEventListener('input', updateCustomerSearch));
   document.querySelectorAll('.customer-new').forEach((button) => button.addEventListener('click', addCustomer));
+  document.querySelectorAll('.customer-page-select').forEach((input) => input.addEventListener('change', changeCustomerPageSelection));
+  document.querySelectorAll('.customer-page-new').forEach((button) => button.addEventListener('click', startCustomerPageAdd));
+  document.querySelectorAll('.customer-page-form').forEach((form) => form.addEventListener('submit', saveCustomerPageForm));
   document.querySelectorAll('.customer-filter-toggle').forEach((button) => button.addEventListener('click', toggleCustomerFilters));
   document.querySelectorAll('.customer-filter').forEach((input) => input.addEventListener('change', updateCustomerFilter));
   document.querySelectorAll('.customer-filter-text').forEach((input) => input.addEventListener('input', updateCustomerFilter));
@@ -774,6 +842,69 @@ function toggleElementSettings(event) {
   if (element.type === 'customers') toggleCustomerFilters(event);
 }
 
+function setSelectedCustomerForCustomerElements(customerId) {
+  dashboardElements.forEach((dashboardElement) => {
+    if (['addBusinessCustomer', 'customerPage', 'customerList'].includes(dashboardElement.type)) {
+      dashboardElement.selectedCustomerId = customerId;
+      dashboardElement.isAddingCustomer = false;
+    }
+  });
+}
+
+function changeCustomerPageSelection(event) {
+  const element = getCustomerElement(event.target);
+  element.selectedCustomerId = event.target.value;
+  element.isAddingCustomer = false;
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function startCustomerPageAdd(event) {
+  const element = getCustomerElement(event.currentTarget);
+  element.isAddingCustomer = true;
+  saveDashboardData();
+  renderDashboardView();
+}
+
+function saveCustomerPageForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const hasName = [data.get('businessName'), data.get('firstName'), data.get('lastName')].some((value) => String(value || '').trim());
+  if (!hasName) {
+    showMessage('Add a customer name or business name before saving.', 'error', form);
+    return;
+  }
+  const now = new Date().toISOString();
+  const customer = {
+    id: `customer-${Date.now()}`,
+    businessId: getCalendarBusinessId(),
+    customerNumber: makeCustomerNumber(),
+    customerType: 'Business',
+    status: 'Lead',
+    customerName: `${data.get('firstName') || ''} ${data.get('lastName') || ''}`.trim() || data.get('businessName'),
+    businessName: data.get('businessName'),
+    firstName: data.get('firstName'),
+    lastName: data.get('lastName'),
+    primaryPhone: data.get('primaryPhone'),
+    email: data.get('email'),
+    serviceAddress: data.get('serviceAddress'),
+    customerNotes: data.get('customerNotes'),
+    notes: [], jobs: [], appointments: [], estimates: [], invoices: [], documents: [], communications: [], tasks: [], alerts: [],
+    createdAt: now,
+    updatedAt: now,
+    createdBy: currentUser?.id || 'local-user',
+    updatedBy: currentUser?.id || 'local-user',
+    activity: [{ at: now, action: 'Customer created', by: currentUser?.id || 'local-user' }],
+  };
+  const customers = loadCustomers();
+  customers.push(customer);
+  saveCustomers(customers);
+  setSelectedCustomerForCustomerElements(customer.id);
+  saveDashboardData();
+  renderDashboardView();
+}
+
 function getCustomerElement(control) { return findElement(control.closest('.dashboard-element').dataset.elementId); }
 function updateCustomerSearch(event) { const element = getCustomerElement(event.target); element.search = event.target.value; saveDashboardData(); renderDashboardView(); }
 function toggleCustomerFilters(event) { event.stopPropagation(); const element = getCustomerElement(event.currentTarget); element.filtersOpen = !element.filtersOpen; saveDashboardData(); renderDashboardView(); }
@@ -784,7 +915,7 @@ function changeCustomerStatusTab(event) { const element = getCustomerElement(eve
 function selectCustomer(event) { const element = getCustomerElement(event.currentTarget); const customers = loadCustomers(); const customer = customers.find((item) => item.id === event.currentTarget.dataset.customerId); if (!customer) return; customer.recentlyViewedAt = new Date().toISOString(); element.selectedCustomerId = customer.id; saveCustomers(customers); saveDashboardData(); renderDashboardView(); }
 function toggleCustomerMinimize(event) { const element = getCustomerElement(event.currentTarget); element.minimized = !element.minimized; saveDashboardData(); renderDashboardView(); }
 function toggleCustomerFullscreen(event) { const element = getCustomerElement(event.currentTarget); element.fullscreen = !element.fullscreen; if (element.fullscreen) { element.x = 12; element.y = 12; element.width = Math.max(element.width, 1080); element.height = Math.max(element.height, 760); } saveDashboardData(); renderDashboardView(); }
-function addCustomer(event) { const element = getCustomerElement(event.target); openCustomerForm(element); }
+function addCustomer(event) { const element = getCustomerElement(event.target); openCustomerForm(element, { customerType: event.currentTarget.dataset.customerType || 'Individual' }); }
 function editCustomer(event) { const element = getCustomerElement(event.target); const customer = loadCustomers().find((item) => item.id === event.currentTarget.dataset.editCustomer); if (customer) openCustomerForm(element, customer); }
 function makeCustomerNumber() { return `C-${new Date().getFullYear()}-${String(loadCustomers().length + 1).padStart(4, '0')}`; }
 function parseLines(value, mapper) { return String(value || '').split('\n').map((line) => line.trim()).filter(Boolean).map(mapper); }
@@ -824,9 +955,8 @@ function saveCustomerForm(event, element, existing, dialog) {
   if (action === 'save' || action === 'duplicate') {
     const data = new FormData(event.currentTarget);
     const hasName = [data.get('customerName'), data.get('businessName'), data.get('firstName'), data.get('lastName')].some((value) => String(value || '').trim());
-    const hasContact = [data.get('primaryPhone'), data.get('email'), data.get('serviceAddress')].some((value) => String(value || '').trim());
-    if (!hasName || !hasContact) {
-      showMessage('Add a customer name or business name and at least one contact method.', 'error', event.currentTarget);
+    if (!hasName) {
+      showMessage('Add a customer name or business name before saving.', 'error', event.currentTarget);
       return;
     }
   }
@@ -840,6 +970,7 @@ function saveCustomerForm(event, element, existing, dialog) {
     const savedCustomer = action === 'duplicate' ? { ...next, customerName: `${next.customerName} copy` } : next;
     customers = customers.filter((c) => c.id !== savedCustomer.id);
     customers.push(savedCustomer);
+    setSelectedCustomerForCustomerElements(savedCustomer.id);
     element.selectedCustomerId = savedCustomer.id;
   }
   saveCustomers(customers);
