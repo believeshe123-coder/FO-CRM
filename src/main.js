@@ -285,8 +285,6 @@ function renderDashboardView() {
   pageTitle.textContent = currentGroup?.name || 'Group';
   breadcrumb.innerHTML = `
     <span class="group-code-badge">Group code: ${escapeHtml(currentGroup?.code || '')}</span>
-    <span class="breadcrumb-separator">/</span>
-    <span class="breadcrumb-current">Custom Dashboard</span>
     <button class="primary-action" id="add-note" type="button">＋ Sticky note</button>`;
   if (topbarActions) {
     topbarActions.innerHTML = '<button class="secondary-action dashboard-settings-button" type="button">⚙ Dashboard settings</button>';
